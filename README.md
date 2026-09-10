@@ -120,8 +120,8 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/febrianyudhis/manage-image-ai.git
-cd manage-image-ai
+git clone https://github.com/febrianyudhis/spark-ai-studio.git
+cd spark-ai-studio
 npm install
 ```
 
@@ -149,7 +149,7 @@ npm run start
 ## 📁 Struktur Direktori Proyek
 
 ```
-manage-image-ai/
+spark-ai-studio/
 ├── data/
 │   └── manage_image_ai.db       # Database SQLite lokal (app_settings & api_hits)
 ├── public/
