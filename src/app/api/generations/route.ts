@@ -92,11 +92,12 @@ export async function POST(req: NextRequest) {
     });
 
     const statusCode = apiResponse.status;
+    const rawText = await apiResponse.text();
     let responseData: Record<string, unknown>;
     try {
-      responseData = await apiResponse.json();
+      responseData = JSON.parse(rawText);
     } catch {
-      responseData = { rawText: await apiResponse.text() };
+      responseData = { rawText };
     }
 
     let resultImageUrl: string | undefined = undefined;

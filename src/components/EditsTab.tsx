@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Scissors, UploadCloud, Plus, Image as ImageIcon, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, Layers, RotateCcw, Maximize2 } from 'lucide-react';
+import { Scissors, UploadCloud, Plus, Image as ImageIcon, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, Layers, RotateCcw, Maximize2, Wand2, Loader2 } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import {
   AVAILABLE_MODELS,
@@ -114,8 +114,35 @@ export default function EditsTab({
   } | null>(null);
 
   const [showJson, setShowJson] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const additionalInputRef = useRef<HTMLInputElement>(null);
+
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim()) {
+      showToast('Masukkan instruksi prompt terlebih dahulu untuk di-enhance', 'warning');
+      return;
+    }
+    setIsEnhancing(true);
+    try {
+      const res = await fetch('/api/enhance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.enhancedPrompt) {
+        setPrompt(data.enhancedPrompt);
+        showToast('Prompt berhasil di-enhance dengan AI!', 'success');
+      } else {
+        showToast(data.error || 'Gagal mengoptimalkan prompt', 'error');
+      }
+    } catch {
+      showToast('Koneksi ke server gagal saat meng-enhance prompt', 'error');
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   // Sync loading state to parent
   useEffect(() => {
@@ -729,10 +756,31 @@ export default function EditsTab({
 
             {/* Prompt Input */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                  Instruksi Edit (Prompt)
-                </label>
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Instruksi Edit (Prompt)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleEnhancePrompt}
+                    disabled={isEnhancing}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                    title="Optimalkan prompt menggunakan AI Chat Completions"
+                  >
+                    {isEnhancing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                        <span>Enhancing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Enhance Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <span className="text-[11px] text-slate-500">{prompt.length} karakter</span>
               </div>
               <textarea

@@ -49,6 +49,9 @@ export function getDb(): DatabaseSync {
   return dbInstance;
 }
 
+import { DEFAULT_ENHANCER_PROMPT } from './models';
+export { DEFAULT_ENHANCER_PROMPT };
+
 function initSchema(db: DatabaseSync) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS api_hits (
@@ -77,9 +80,26 @@ function initSchema(db: DatabaseSync) {
       api_token TEXT NOT NULL DEFAULT '',
       generations_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
       edits_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
+      enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+      enhancer_api_token TEXT NOT NULL DEFAULT '',
+      enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+      enhancer_prompt TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
     );
   `);
+
+  // Migrasi otomatis untuk menambahkan kolom enhancer jika tabel sudah ada sebelumnya
+  const alterMigrations = [
+    `ALTER TABLE app_settings ADD COLUMN enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1'`,
+    `ALTER TABLE app_settings ADD COLUMN enhancer_api_token TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE app_settings ADD COLUMN enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini'`,
+    `ALTER TABLE app_settings ADD COLUMN enhancer_prompt TEXT NOT NULL DEFAULT ''`,
+  ];
+  for (const sql of alterMigrations) {
+    try {
+      db.exec(sql);
+    } catch {}
+  }
 
   // Seed default settings langsung dari data bawaan / dummy (tanpa ketergantungan pada file .env)
   try {
@@ -90,9 +110,13 @@ function initSchema(db: DatabaseSync) {
       const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
       const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
       db.prepare(`
-        INSERT INTO app_settings (id, base_url, api_token, generations_model, edits_model, updated_at)
-        VALUES (1, ?, ?, ?, ?, datetime('now', 'localtime'))
-      `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel);
+        INSERT INTO app_settings (
+          id, base_url, api_token, generations_model, edits_model,
+          enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
+          updated_at
+        )
+        VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, datetime('now', 'localtime'))
+      `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT);
     }
   } catch {}
 }
@@ -323,6 +347,10 @@ export interface AppSettings {
   api_token: string;
   generations_model: string;
   edits_model: string;
+  enhancer_base_url: string;
+  enhancer_api_token: string;
+  enhancer_model: string;
+  enhancer_prompt: string;
   updated_at: string;
 }
 
@@ -337,14 +365,28 @@ export function getAppSettings(): AppSettings {
     const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
 
     db.prepare(`
-      INSERT INTO app_settings (id, base_url, api_token, generations_model, edits_model, updated_at)
-      VALUES (1, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel);
+      INSERT INTO app_settings (
+        id, base_url, api_token, generations_model, edits_model,
+        enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
+        updated_at
+      )
+      VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, datetime('now', 'localtime'))
+    `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT);
 
     row = db.prepare(`SELECT * FROM app_settings WHERE id = 1`).get() as unknown as AppSettings;
   }
 
-  return row;
+  // Jamin nilai default aman jika kolom baru null/undefined karena migrasi lama
+  return {
+    ...row,
+    enhancer_base_url: row.enhancer_base_url || 'https://api.openai.com/v1',
+    enhancer_api_token: row.enhancer_api_token || '',
+    enhancer_model: row.enhancer_model || 'gpt-4o-mini',
+    enhancer_prompt:
+      row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
+        ? row.enhancer_prompt
+        : DEFAULT_ENHANCER_PROMPT,
+  };
 }
 
 export function updateAppSettings(input: {
@@ -352,19 +394,45 @@ export function updateAppSettings(input: {
   api_token?: string;
   generations_model?: string;
   edits_model?: string;
+  enhancer_base_url?: string;
+  enhancer_api_token?: string;
+  enhancer_model?: string;
+  enhancer_prompt?: string;
 }): AppSettings {
   const current = getAppSettings();
   const nextBaseUrl = input.base_url !== undefined ? input.base_url.trim() : current.base_url;
   const nextApiToken = input.api_token !== undefined ? input.api_token.trim() : current.api_token;
   const nextGenModel = input.generations_model !== undefined ? input.generations_model.trim() : current.generations_model;
   const nextEditModel = input.edits_model !== undefined ? input.edits_model.trim() : current.edits_model;
+  const nextEnhancerBaseUrl = input.enhancer_base_url !== undefined ? input.enhancer_base_url.trim() : current.enhancer_base_url;
+  const nextEnhancerApiToken = input.enhancer_api_token !== undefined ? input.enhancer_api_token.trim() : current.enhancer_api_token;
+  const nextEnhancerModel = input.enhancer_model !== undefined ? input.enhancer_model.trim() : current.enhancer_model;
+  const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
 
   const db = getDb();
   db.prepare(`
     UPDATE app_settings
-    SET base_url = ?, api_token = ?, generations_model = ?, edits_model = ?, updated_at = datetime('now', 'localtime')
+    SET
+      base_url = ?,
+      api_token = ?,
+      generations_model = ?,
+      edits_model = ?,
+      enhancer_base_url = ?,
+      enhancer_api_token = ?,
+      enhancer_model = ?,
+      enhancer_prompt = ?,
+      updated_at = datetime('now', 'localtime')
     WHERE id = 1
-  `).run(nextBaseUrl, nextApiToken, nextGenModel, nextEditModel);
+  `).run(
+    nextBaseUrl,
+    nextApiToken,
+    nextGenModel,
+    nextEditModel,
+    nextEnhancerBaseUrl,
+    nextEnhancerApiToken,
+    nextEnhancerModel,
+    nextEnhancerPrompt
+  );
 
   return getAppSettings();
 }

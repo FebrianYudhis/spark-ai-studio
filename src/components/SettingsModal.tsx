@@ -1,9 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Key, Globe, Sparkles, Scissors, Eye, EyeOff, Save, RefreshCw, CheckCircle2, ChevronDown } from 'lucide-react';
+import {
+  X,
+  Settings,
+  Key,
+  Globe,
+  Sparkles,
+  Scissors,
+  Eye,
+  EyeOff,
+  Save,
+  RefreshCw,
+  CheckCircle2,
+  ChevronDown,
+  Wand2,
+  Image as ImageIcon,
+  RotateCcw,
+} from 'lucide-react';
 import { showToast, showError } from '@/lib/swal';
-import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel } from '@/lib/models';
+import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
 
 export interface AppConfigData {
   baseUrl: string;
@@ -12,6 +28,12 @@ export interface AppConfigData {
   rawToken?: string;
   defaultGenerationsModel: string;
   defaultEditsModel: string;
+  enhancerBaseUrl?: string;
+  enhancerToken?: string;
+  isEnhancerConfigured?: boolean;
+  maskedEnhancerToken?: string;
+  enhancerModel?: string;
+  enhancerPrompt?: string;
   updatedAt?: string;
 }
 
@@ -24,6 +46,10 @@ interface SettingsModalProps {
     rawToken?: string;
     defaultGenerationsModel: string;
     defaultEditsModel: string;
+    enhancerBaseUrl?: string;
+    enhancerToken?: string;
+    enhancerModel?: string;
+    enhancerPrompt?: string;
     updatedAt?: string;
   } | null;
 }
@@ -34,11 +60,22 @@ export default function SettingsModal({
   onSaveSuccess,
   currentConfig,
 }: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<'image' | 'enhancer'>('image');
+
+  // Image Studio Settings State
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
   const [token, setToken] = useState('');
   const [generationsModel, setGenerationsModel] = useState<AvailableModel>(DEFAULT_MODEL);
   const [editsModel, setEditsModel] = useState<AvailableModel>(DEFAULT_MODEL);
   const [showToken, setShowToken] = useState(false);
+
+  // Prompt Enhancer Settings State
+  const [enhancerBaseUrl, setEnhancerBaseUrl] = useState('https://api.openai.com/v1');
+  const [enhancerToken, setEnhancerToken] = useState('');
+  const [enhancerModel, setEnhancerModel] = useState('gpt-4o-mini');
+  const [enhancerPrompt, setEnhancerPrompt] = useState(DEFAULT_ENHANCER_PROMPT);
+  const [showEnhancerToken, setShowEnhancerToken] = useState(false);
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -55,6 +92,14 @@ export default function SettingsModal({
           currentConfig.defaultEditsModel && isValidModel(currentConfig.defaultEditsModel)
             ? currentConfig.defaultEditsModel
             : DEFAULT_MODEL
+        );
+        setEnhancerBaseUrl(currentConfig.enhancerBaseUrl || 'https://api.openai.com/v1');
+        setEnhancerToken(currentConfig.enhancerToken || '');
+        setEnhancerModel(currentConfig.enhancerModel || 'gpt-4o-mini');
+        setEnhancerPrompt(
+          currentConfig.enhancerPrompt !== undefined && currentConfig.enhancerPrompt !== null
+            ? currentConfig.enhancerPrompt
+            : DEFAULT_ENHANCER_PROMPT
         );
       } else {
         // Fetch if not provided
@@ -73,6 +118,14 @@ export default function SettingsModal({
                 data.defaultEditsModel && isValidModel(data.defaultEditsModel)
                   ? data.defaultEditsModel
                   : DEFAULT_MODEL
+              );
+              setEnhancerBaseUrl(data.enhancerBaseUrl || 'https://api.openai.com/v1');
+              setEnhancerToken(data.enhancerToken || '');
+              setEnhancerModel(data.enhancerModel || 'gpt-4o-mini');
+              setEnhancerPrompt(
+                data.enhancerPrompt !== undefined && data.enhancerPrompt !== null
+                  ? data.enhancerPrompt
+                  : DEFAULT_ENHANCER_PROMPT
               );
             }
           })
@@ -96,6 +149,10 @@ export default function SettingsModal({
           token: token.trim(),
           generationsModel: generationsModel.trim(),
           editsModel: editsModel.trim(),
+          enhancerBaseUrl: enhancerBaseUrl.trim(),
+          enhancerToken: enhancerToken.trim(),
+          enhancerModel: enhancerModel.trim(),
+          enhancerPrompt: enhancerPrompt.trim(),
         }),
       });
 
@@ -139,143 +196,315 @@ export default function SettingsModal({
           </button>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="px-5 pt-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('image')}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'image'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>Image</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('enhancer')}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'enhancer'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Wand2 className="w-4 h-4 text-purple-600" />
+            <span>Enhancer</span>
+          </button>
+        </div>
+
         {/* Modal Body / Form */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1 text-sm">
           
-          {/* Base URL Input */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-indigo-600" />
-                Target Base URL
-              </label>
-              <button
-                type="button"
-                onClick={() => setBaseUrl('https://api.openai.com/v1')}
-                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium hover:underline cursor-pointer"
-              >
-                Reset ke Default OpenAI
-              </button>
-            </div>
-            <input
-              type="url"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1 atau proxy gateway"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
-              required
-            />
-            <p className="text-[11px] text-slate-500">
-              Endpoint yang dituju: <code className="font-mono text-slate-700 font-semibold">{baseUrl.replace(/\/+$/, '')}/images/generations</code> &amp; <code className="font-mono text-slate-700 font-semibold">/images/edits</code>
-            </p>
-          </div>
+          {/* TAB 1: Image */}
+          {activeTab === 'image' && (
+            <div className="space-y-5">
+              {/* Base URL Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                    Target Base URL Image API
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setBaseUrl('https://api.openai.com/v1')}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium hover:underline cursor-pointer"
+                  >
+                    Reset ke Default OpenAI
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1 atau proxy gateway"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Endpoint yang dituju: <code className="font-mono text-slate-700 font-semibold">{baseUrl.replace(/\/+$/, '')}/images/generations</code> &amp; <code className="font-mono text-slate-700 font-semibold">/images/edits</code>
+                </p>
+              </div>
 
-          {/* API Token Input */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-amber-600" />
-                API Token / Bearer Key
-              </label>
-              <span className="text-[11px] text-slate-500">
-                {token ? (
-                  <span className="text-emerald-700 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Token Tersedia
+              {/* API Token Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-amber-600" />
+                    API Token / Bearer Key (Image Studio)
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {token ? (
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Token Tersedia
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-medium">Belum Diatur</span>
+                    )}
                   </span>
-                ) : (
-                  <span className="text-rose-600 font-medium">Belum Diatur</span>
-                )}
-              </span>
-            </div>
-            <div className="relative">
-              <input
-                type={showToken ? 'text' : 'password'}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="sk-proj-..."
-                className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
-              />
-              <button
-                type="button"
-                onClick={() => setShowToken((prev) => !prev)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
-                title={showToken ? 'Sembunyikan Token' : 'Lihat Token'}
-              >
-                {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-500">
-              Token disimpan dengan aman dan dikirimkan sebagai <code className="font-mono">Bearer Token</code>.
-            </p>
-          </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showToken ? 'text' : 'password'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="sk-proj-..."
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showToken ? 'Sembunyikan Token' : 'Lihat Token'}
+                  >
+                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Token disimpan dengan aman dan dikirimkan sebagai <code className="font-mono">Bearer Token</code> untuk request gambar.
+                </p>
+              </div>
 
-          {/* Model Generations Dropdown */}
-          <div className="space-y-2 p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl">
-            <div className="flex items-center justify-between">
-              <label htmlFor="generations-model-select" className="text-xs font-semibold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                Model Default Image Generations
-              </label>
-              <span className="text-[10px] font-mono text-purple-700 font-bold bg-purple-100 px-1.5 py-0.5 rounded">
-                Generations
-              </span>
-            </div>
-            <div className="relative">
-              <select
-                id="generations-model-select"
-                value={generationsModel}
-                onChange={(e) => setGenerationsModel(e.target.value as AvailableModel)}
-                className="w-full appearance-none px-3.5 py-2.5 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer pr-10 transition-all shadow-2xs"
-                required
-              >
-                {AVAILABLE_MODELS.map((m) => (
-                  <option key={m} value={m} className="font-mono py-1 text-slate-800">
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-purple-700">
-                <ChevronDown className="w-4 h-4" />
+              {/* Model Generations Dropdown */}
+              <div className="space-y-2 p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="generations-model-select" className="text-xs font-semibold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    Model Default Image Generations
+                  </label>
+                  <span className="text-[10px] font-mono text-purple-700 font-bold bg-purple-100 px-1.5 py-0.5 rounded">
+                    Generations
+                  </span>
+                </div>
+                <div className="relative">
+                  <select
+                    id="generations-model-select"
+                    value={generationsModel}
+                    onChange={(e) => setGenerationsModel(e.target.value as AvailableModel)}
+                    className="w-full appearance-none px-3.5 py-2.5 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer pr-10 transition-all shadow-2xs"
+                    required
+                  >
+                    {AVAILABLE_MODELS.map((m) => (
+                      <option key={m} value={m} className="font-mono py-1 text-slate-800">
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-purple-700">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Pilih model AI default untuk pembuatan gambar dari teks (Generations).
+                </p>
+              </div>
+
+              {/* Model Edits Dropdown */}
+              <div className="space-y-2 p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="edits-model-select" className="text-xs font-semibold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Scissors className="w-3.5 h-3.5 text-emerald-600" />
+                    Model Default Image Edits
+                  </label>
+                  <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
+                    Edits
+                  </span>
+                </div>
+                <div className="relative">
+                  <select
+                    id="edits-model-select"
+                    value={editsModel}
+                    onChange={(e) => setEditsModel(e.target.value as AvailableModel)}
+                    className="w-full appearance-none px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-emerald-950 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer pr-10 transition-all shadow-2xs"
+                    required
+                  >
+                    {AVAILABLE_MODELS.map((m) => (
+                      <option key={m} value={m} className="font-mono py-1 text-slate-800">
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-emerald-700">
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Pilih model AI default untuk pengeditan gambar (Edits).
+                </p>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Pilih model AI default untuk pembuatan gambar dari teks (Generations).
-            </p>
-          </div>
+          )}
 
-          {/* Model Edits Dropdown */}
-          <div className="space-y-2 p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl">
-            <div className="flex items-center justify-between">
-              <label htmlFor="edits-model-select" className="text-xs font-semibold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Scissors className="w-3.5 h-3.5 text-emerald-600" />
-                Model Default Image Edits
-              </label>
-              <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded">
-                Edits
-              </span>
-            </div>
-            <div className="relative">
-              <select
-                id="edits-model-select"
-                value={editsModel}
-                onChange={(e) => setEditsModel(e.target.value as AvailableModel)}
-                className="w-full appearance-none px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-emerald-950 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer pr-10 transition-all shadow-2xs"
-                required
-              >
-                {AVAILABLE_MODELS.map((m) => (
-                  <option key={m} value={m} className="font-mono py-1 text-slate-800">
-                    {m}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-emerald-700">
-                <ChevronDown className="w-4 h-4" />
+          {/* TAB 2: Enhancer */}
+          {activeTab === 'enhancer' && (
+            <div className="space-y-5">
+              {/* Enhancer Base URL Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-purple-600" />
+                    Base URL Enhancer
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEnhancerBaseUrl('https://api.openai.com/v1')}
+                    className="text-[11px] text-purple-600 hover:text-purple-800 font-medium hover:underline cursor-pointer"
+                  >
+                    Reset ke Default OpenAI
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  value={enhancerBaseUrl}
+                  onChange={(e) => setEnhancerBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Endpoint Chat Completions: <code className="font-mono text-slate-700 font-semibold">{enhancerBaseUrl.replace(/\/+$/, '')}/chat/completions</code>
+                </p>
+              </div>
+
+              {/* Enhancer API Token Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-amber-600" />
+                    API Token Enhancer <span className="text-rose-600">*</span>
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {enhancerToken ? (
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Token Tersedia
+                      </span>
+                    ) : (
+                      <span className="text-rose-600 font-medium">Wajib Diisi</span>
+                    )}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showEnhancerToken ? 'text' : 'password'}
+                    value={enhancerToken}
+                    onChange={(e) => setEnhancerToken(e.target.value)}
+                    placeholder="sk-proj-..."
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEnhancerToken((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showEnhancerToken ? 'Sembunyikan Token' : 'Lihat Token'}
+                  >
+                    {showEnhancerToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Token khusus untuk fitur Prompt Enhancer (wajib diisi agar tombol <span className="font-semibold text-purple-700">Enhance Prompt</span> berfungsi).
+                </p>
+              </div>
+
+              {/* Enhancer Model Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5 text-purple-600" />
+                    Model Chat Completions
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="text-slate-400">Pilihan cepat:</span>
+                    <button
+                      type="button"
+                      onClick={() => setEnhancerModel('gpt-4o-mini')}
+                      className="px-1.5 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-mono font-medium transition-colors cursor-pointer"
+                    >
+                      gpt-4o-mini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnhancerModel('gpt-4o')}
+                      className="px-1.5 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-mono font-medium transition-colors cursor-pointer"
+                    >
+                      gpt-4o
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={enhancerModel}
+                  onChange={(e) => setEnhancerModel(e.target.value)}
+                  placeholder="misal: gpt-4o-mini, gpt-4o, dsb"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Model LLM yang digunakan untuk merewrite dan memperkaya prompt teks menjadi lebih deskriptif visual.
+                </p>
+              </div>
+
+              {/* Enhancer System / Template Prompt */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                    Instruksi Prompt Enhancer (System Prompt)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEnhancerPrompt(DEFAULT_ENHANCER_PROMPT)}
+                    className="text-[11px] text-purple-600 hover:text-purple-800 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset ke Template Bawaan
+                  </button>
+                </div>
+                <textarea
+                  value={enhancerPrompt}
+                  onChange={(e) => setEnhancerPrompt(e.target.value)}
+                  rows={6}
+                  placeholder="Instruksi sistem untuk memandu AI dalam merewrite prompt..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all resize-y leading-relaxed"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">
+                  Instruksi panduan bagi model AI dalam memperkaya prompt pengguna (misal: mempertajam lighting, detail tekstur, komposisi artistik, dll).
+                </p>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Pilih model AI default untuk pengeditan gambar (Edits).
-            </p>
-          </div>
+          )}
 
           {/* Footer / Submit Buttons */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
