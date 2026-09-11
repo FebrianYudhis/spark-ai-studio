@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Scissors, UploadCloud, Plus, Image as ImageIcon, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, Layers, RotateCcw, Maximize2, Wand2, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Scissors, UploadCloud, Plus, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2 } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import {
   AVAILABLE_MODELS,
   AvailableModel,
   DEFAULT_MODEL,
   isValidModel,
-  STANDARD_IMAGE_SIZES,
   validateImageSize,
   SIZE_PRESET_OPTIONS,
   getPresetIdFromSize,
@@ -180,15 +179,17 @@ export default function EditsTab({
     });
   };
 
-  const clearPrimaryImage = () => {
-    if (primaryImage) {
-      URL.revokeObjectURL(primaryImage.previewUrl);
-      setPrimaryImage(null);
-    }
+  const clearPrimaryImage = useCallback(() => {
+    setPrimaryImage((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return null;
+    });
     if (primaryInputRef.current) {
       primaryInputRef.current.value = '';
     }
-  };
+  }, []);
 
   // Handle Additional Images Change
   const addAdditionalFiles = (files: FileList | File[]) => {
@@ -228,13 +229,15 @@ export default function EditsTab({
     });
   };
 
-  const clearAllAdditionalImages = () => {
-    additionalImages.forEach((item) => URL.revokeObjectURL(item.previewUrl));
-    setAdditionalImages([]);
+  const clearAllAdditionalImages = useCallback(() => {
+    setAdditionalImages((prev) => {
+      prev.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
     if (additionalInputRef.current) {
       additionalInputRef.current.value = '';
     }
-  };
+  }, []);
 
   // Sync preset primary image (dari tombol "Edit Gambar" di riwayat)
   useEffect(() => {
@@ -280,7 +283,7 @@ export default function EditsTab({
     return () => {
       isMounted = false;
     };
-  }, [presetPrimaryImageUrl, presetPrimaryImageKey]);
+  }, [presetPrimaryImageUrl, presetPrimaryImageKey, clearPrimaryImage, clearAllAdditionalImages]);
 
   // Helper untuk mendapatkan nama file asli dari URL upload
   const getCleanFilename = (url: string, fallback: string) => {
@@ -377,7 +380,7 @@ export default function EditsTab({
     return () => {
       isMounted = false;
     };
-  }, [presetEditSession]);
+  }, [presetEditSession, clearPrimaryImage, clearAllAdditionalImages]);
 
   // Scaler multiplier: 2x or 0.5x dengan batas edge limits OpenAI (maxDim <= 3840, minDim <= 2160)
   const handleScale = (factor: number) => {
@@ -965,7 +968,7 @@ export default function EditsTab({
                   <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1 leading-relaxed">
                     <p className="font-semibold flex items-center gap-1 text-amber-950">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      Peringatan & Aturan Resolusi Kustom OpenAI Images:
+                      Peringatan &amp; Aturan Resolusi Kustom OpenAI Images:
                     </p>
                     <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
                       <li>Format string wajib <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">WIDTHxHEIGHT</code> (misal <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">1536x864</code>) atau <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">auto</code>.</li>
@@ -1062,7 +1065,9 @@ export default function EditsTab({
                 ) : (
                   <>
                     <Send className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">Kirim {totalImageCount > 0 ? `(${totalImageCount} File) ` : ''}ke /images/edits</span>
+                    <span className="hidden sm:inline">
+                      Kirim {totalImageCount > 0 ? `(${totalImageCount} File, ${formatFileSize(totalBytes)}) ` : ''}ke /images/edits
+                    </span>
                     <span className="sm:hidden">Kirim Edit Gambar</span>
                   </>
                 )}

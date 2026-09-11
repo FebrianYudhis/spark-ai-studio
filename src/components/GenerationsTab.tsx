@@ -8,7 +8,6 @@ import {
   AvailableModel,
   DEFAULT_MODEL,
   isValidModel,
-  STANDARD_IMAGE_SIZES,
   validateImageSize,
   SIZE_PRESET_OPTIONS,
   getPresetIdFromSize,
@@ -534,7 +533,7 @@ export default function GenerationsTab({
                   <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1 leading-relaxed">
                     <p className="font-semibold flex items-center gap-1 text-amber-950">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      Peringatan & Aturan Resolusi Kustom OpenAI Images:
+                      Peringatan &amp; Aturan Resolusi Kustom OpenAI Images:
                     </p>
                     <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
                       <li>Format string wajib <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">WIDTHxHEIGHT</code> (misal <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">1536x864</code>) atau <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">auto</code>.</li>

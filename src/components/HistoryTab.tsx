@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
@@ -94,7 +94,7 @@ export default function HistoryTab({
     }
   };
 
-  const fetchStorageStats = async () => {
+  const fetchStorageStats = useCallback(async () => {
     try {
       const res = await fetch('/api/storage');
       if (res.ok) {
@@ -106,9 +106,9 @@ export default function HistoryTab({
     } catch (err) {
       console.error('Failed to fetch storage stats:', err);
     }
-  };
+  }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -133,11 +133,11 @@ export default function HistoryTab({
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterType, page, limit, debouncedSearch, fetchStorageStats]);
 
   useEffect(() => {
     fetchHistory();
-  }, [filterType, refreshTrigger, page, limit, debouncedSearch]);
+  }, [fetchHistory, refreshTrigger]);
 
   const handleDeleteItem = async (id: number) => {
     const confirmed = await showConfirm({
