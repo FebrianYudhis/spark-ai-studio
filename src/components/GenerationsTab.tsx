@@ -413,7 +413,7 @@ export default function GenerationsTab({
                 <div className="flex items-center gap-2">
                   <a
                     href={result.resultImageUrl}
-                    download={`ai_gen_${Date.now()}.png`}
+                    download={`ai_gen_${result?.historyId || 'result'}.png`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-1 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
@@ -454,7 +454,7 @@ export default function GenerationsTab({
                 onClick={() => setShowJson(!showJson)}
                 className="w-full px-5 py-3 flex items-center justify-between text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 transition-colors"
               >
-                <span>Lihat Raw JSON Request & Response</span>
+                <span>Lihat Raw JSON Request &amp; Response</span>
                 {showJson ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
               {showJson && (

@@ -842,7 +842,7 @@ export default function EditsTab({
                           <div className="flex items-center gap-2">
                             <a
                               href={url}
-                              download={`ai_edit_${idx + 1}_${Date.now()}.png`}
+                              download={`ai_edit_${result?.historyId || 'result'}_${idx + 1}.png`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs"
@@ -888,7 +888,7 @@ export default function EditsTab({
                 onClick={() => setShowJson(!showJson)}
                 className="w-full px-5 py-3 flex items-center justify-between text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 transition-colors"
               >
-                <span>Lihat Raw Request Summary & Response JSON</span>
+                <span>Lihat Raw Request Summary &amp; Response JSON</span>
                 {showJson ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
               {showJson && (

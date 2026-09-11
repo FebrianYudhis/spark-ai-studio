@@ -8,6 +8,7 @@ import { showToast, showError } from '@/lib/swal';
 interface DetailModalProps {
   item: ApiHitRecord | null;
   onClose: () => void;
+  onItemUpdated?: (updatedItem: ApiHitRecord) => void;
   onReusePrompt?: (prompt: string, model: string, type: 'generation' | 'edit') => void;
   onReuseEditSession?: (prompt: string, primaryUrl: string, additionalUrls: string[]) => void;
   onUseAsEditBase?: (imageUrl?: string) => void;
@@ -16,6 +17,7 @@ interface DetailModalProps {
 export default function DetailModal({
   item,
   onClose,
+  onItemUpdated,
   onReusePrompt,
   onReuseEditSession,
   onUseAsEditBase,
@@ -24,8 +26,11 @@ export default function DetailModal({
   const [copiedResponse, setCopiedResponse] = useState(false);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
+  const [localResultImageUrl, setLocalResultImageUrl] = useState<string | null>(null);
 
   if (!item) return null;
+
+  const currentResultImageUrl = localResultImageUrl ?? item.result_image_url;
 
   const handleRedownload = async () => {
     if (!item) return;
@@ -38,7 +43,10 @@ export default function DetailModal({
       });
       const data = await res.json();
       if (res.ok && data.success && data.resultImageUrl) {
-        item.result_image_url = data.resultImageUrl;
+        setLocalResultImageUrl(data.resultImageUrl);
+        if (onItemUpdated) {
+          onItemUpdated({ ...item, result_image_url: data.resultImageUrl });
+        }
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
       } else {
         showError('Gagal Mengambil Gambar', data.error || 'Gagal mengambil ulang gambar dari response payload');
@@ -108,7 +116,7 @@ export default function DetailModal({
   };
 
   const sourceUrls = parseUrls(item.source_image_url);
-  const resultUrls = parseUrls(item.result_image_url);
+  const resultUrls = parseUrls(currentResultImageUrl);
 
   let parsedPayload: Record<string, unknown> | null = null;
   try {

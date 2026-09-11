@@ -646,6 +646,10 @@ export default function HistoryTab({
       <DetailModal
         item={selectedItem}
         onClose={() => setSelectedItem(null)}
+        onItemUpdated={(updated) => {
+          setSelectedItem(updated);
+          setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
+        }}
         onReusePrompt={(p, m, t) => {
           onSelectPrompt(p, m, t);
           setSelectedItem(null);

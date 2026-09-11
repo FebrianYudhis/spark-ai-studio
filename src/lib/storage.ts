@@ -39,44 +39,48 @@ export async function saveUploadedFile(file: File, prefix: string = 'edit'): Pro
   };
 }
 
-export function extractImageStrings(responseData: any): string[] {
-  if (!responseData) return [];
+export function extractImageStrings(responseData: unknown): string[] {
+  if (!responseData || typeof responseData !== 'object') return [];
   const results: string[] = [];
+  const resObj = responseData as Record<string, unknown>;
 
   // 1. Standar OpenAI: data: [ { url: '...' }, { b64_json: '...' } ]
-  if (Array.isArray(responseData.data)) {
-    for (const item of responseData.data) {
+  if (Array.isArray(resObj.data)) {
+    for (const item of resObj.data) {
       if (typeof item === 'string') {
         results.push(item);
       } else if (item && typeof item === 'object') {
-        const val = item.url || item.b64_json || item.image || item.base64;
-        if (val && typeof val === 'string') results.push(val);
+        const entry = item as Record<string, unknown>;
+        const val = entry.url || entry.b64_json || entry.image || entry.base64;
+        if (typeof val === 'string') results.push(val);
       }
     }
   }
 
   // 2. Format Provider Alternatif: images: [ ... ]
-  if (Array.isArray(responseData.images)) {
-    for (const item of responseData.images) {
+  if (Array.isArray(resObj.images)) {
+    for (const item of resObj.images) {
       if (typeof item === 'string') results.push(item);
-      else if (item?.url) results.push(item.url);
-      else if (item?.b64_json) results.push(item.b64_json);
-      else if (item?.image) results.push(item.image);
+      else if (item && typeof item === 'object') {
+        const entry = item as Record<string, unknown>;
+        const val = entry.url || entry.b64_json || entry.image;
+        if (typeof val === 'string') results.push(val);
+      }
     }
   }
 
   // 3. Field tunggal gambar di root: image / url / b64_json
-  if (typeof responseData.image === 'string') results.push(responseData.image);
-  if (typeof responseData.url === 'string') results.push(responseData.url);
-  if (typeof responseData.b64_json === 'string') results.push(responseData.b64_json);
+  if (typeof resObj.image === 'string') results.push(resObj.image);
+  if (typeof resObj.url === 'string') results.push(resObj.url);
+  if (typeof resObj.b64_json === 'string') results.push(resObj.b64_json);
 
   // 4. Format Output Replicate / AI Gateway lainnya
-  if (Array.isArray(responseData.output)) {
-    for (const item of responseData.output) {
+  if (Array.isArray(resObj.output)) {
+    for (const item of resObj.output) {
       if (typeof item === 'string') results.push(item);
     }
-  } else if (typeof responseData.output === 'string') {
-    results.push(responseData.output);
+  } else if (typeof resObj.output === 'string') {
+    results.push(resObj.output);
   }
 
   return results;

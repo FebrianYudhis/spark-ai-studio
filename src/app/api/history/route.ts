@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse response payload
-    let responseData: any;
+    let responseData: unknown;
     try {
       responseData = typeof item.response_payload === 'string'
         ? JSON.parse(item.response_payload)
