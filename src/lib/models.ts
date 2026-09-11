@@ -306,3 +306,21 @@ export function validateImageQuality(qualityStr: string, model: string): Quality
   };
 }
 
+/**
+ * Memformat string timestamp tanggal (termasuk format SQLite YYYY-MM-DD HH:MM:SS)
+ * secara aman agar tidak memicu "Invalid Date" di browser Safari / iOS (WebKit).
+ */
+export function formatSafeDate(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  try {
+    const trimmed = dateStr.trim();
+    const safeIso = trimmed.includes('T')
+      ? (trimmed.endsWith('Z') || trimmed.includes('+') ? trimmed : `${trimmed}Z`)
+      : `${trimmed.replace(' ', 'T')}${trimmed.endsWith('Z') || trimmed.includes('+') ? '' : 'Z'}`;
+    const date = new Date(safeIso);
+    return isNaN(date.getTime()) ? dateStr : date.toLocaleString('id-ID');
+  } catch {
+    return dateStr;
+  }
+}
+

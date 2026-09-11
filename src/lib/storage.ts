@@ -182,6 +182,9 @@ export async function saveRemoteOrBase64Image(
     if (isDataUri || !isHttp) {
       const cleanBase64 = urlOrBase64.replace(/^data:image\/[a-zA-Z+.-]+;base64,/, '').trim();
       const buffer = Buffer.from(cleanBase64, 'base64');
+      if (!buffer || buffer.length === 0) {
+        return undefined;
+      }
 
       let ext = 'png';
       const match = urlOrBase64.match(/^data:image\/([a-zA-Z+.-]+);base64,/);

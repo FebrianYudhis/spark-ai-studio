@@ -3,12 +3,28 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 const DB_DIR = path.join(process.cwd(), 'data');
-const DB_PATH = path.join(DB_DIR, 'manage_image_ai.db');
+const DB_PATH = path.join(DB_DIR, 'spark_ai_studio.db');
+const LEGACY_DB_PATH = path.join(DB_DIR, 'manage_image_ai.db');
 
-// Ensure directory exists
+// Ensure directory exists & migrate legacy DB file if needed
 function ensureDbDir() {
   if (!fs.existsSync(DB_DIR)) {
     fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+
+  // Migrasi otomatis dari manage_image_ai.db ke spark_ai_studio.db jika ada
+  if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+    try {
+      fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+      console.log(`[db] Migrated legacy database ${LEGACY_DB_PATH} -> ${DB_PATH}`);
+    } catch {
+      try {
+        fs.copyFileSync(LEGACY_DB_PATH, DB_PATH);
+        fs.unlinkSync(LEGACY_DB_PATH);
+      } catch (err) {
+        console.error('[db] Failed to migrate legacy database file:', err);
+      }
+    }
   }
 }
 ensureDbDir();

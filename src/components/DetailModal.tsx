@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, ExternalLink, Download, FileText, AlertCircle, MessageSquare, Sparkles, Scissors, RefreshCw } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
+import { formatSafeDate } from '@/lib/models';
 
 interface DetailModalProps {
   item: ApiHitRecord | null;
@@ -175,7 +176,7 @@ export default function DetailModal({
             </div>
             <div>
               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Waktu Eksekusi</p>
-              <p className="text-xs text-slate-800 mt-1">{new Date(item.created_at).toLocaleString('id-ID')}</p>
+              <p className="text-xs text-slate-800 mt-1">{formatSafeDate(item.created_at)}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Model</p>

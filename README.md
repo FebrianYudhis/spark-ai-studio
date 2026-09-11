@@ -109,7 +109,7 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
 
 ### 3. **Riwayat HIT API Terpadu (History with SQLite)**
 
-- Setiap eksekusi HIT API otomatis tercatat secara permanen ke dalam database SQLite lokal (`data/manage_image_ai.db`).
+- Setiap eksekusi HIT API otomatis tercatat secara permanen ke dalam database SQLite lokal (`data/spark_ai_studio.db`).
 - **Pemisahan Tampilan Generations vs Edits**:
   - **Kartu Generations**: Menampilkan prompt rapi (`line-clamp-4`), parameter ukuran, kualitas, dan thumbnail hasil.
   - **Kartu Edits**: Menampilkan prompt instruksi, informasi file sumber asli, serta thumbnail perbandingan gambar asli vs hasil edit.
@@ -199,7 +199,7 @@ npm run start
 ```
 spark-ai-studio/
 ├── data/
-│   └── manage_image_ai.db       # Database SQLite lokal (app_settings & api_hits)
+│   └── spark_ai_studio.db       # Database SQLite lokal (app_settings & api_hits)
 ├── public/
 │   └── uploads/                 # Cache & penyimpanan gambar lokal
 ├── src/

@@ -5,6 +5,7 @@ import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircl
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
+import { formatSafeDate } from '@/lib/models';
 
 interface StorageStatsInfo {
   totalFiles: number;
@@ -394,7 +395,7 @@ export default function HistoryTab({
 
                   <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                     <span className="text-[11px] sm:text-xs text-slate-500">
-                      {new Date(item.created_at).toLocaleString('id-ID')}
+                      {formatSafeDate(item.created_at)}
                     </span>
                     <button
                       onClick={() => handleDeleteItem(item.id)}

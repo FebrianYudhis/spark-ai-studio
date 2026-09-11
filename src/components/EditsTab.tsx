@@ -132,7 +132,11 @@ export default function EditsTab({
 
   // Handle Primary Image Change
   const handlePrimaryChange = (file: File | null) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast(`File "${file.name}" bukan gambar yang valid. Gunakan format gambar (PNG, JPG, WebP, dll).`, 'warning');
+      return;
+    }
     if (primaryImage) {
       URL.revokeObjectURL(primaryImage.previewUrl);
     }
@@ -155,7 +159,21 @@ export default function EditsTab({
 
   // Handle Additional Images Change
   const addAdditionalFiles = (files: FileList | File[]) => {
-    const fileArray = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    const rawList = Array.from(files);
+    if (rawList.length === 0) return;
+
+    const fileArray = rawList.filter((f) => f.type.startsWith('image/'));
+    const invalidCount = rawList.length - fileArray.length;
+
+    if (invalidCount > 0) {
+      showToast(
+        invalidCount === rawList.length
+          ? 'Hanya file gambar (PNG, JPG, WebP, dll) yang didukung.'
+          : `${invalidCount} file diabaikan karena bukan format gambar yang valid.`,
+        'warning'
+      );
+    }
+
     if (fileArray.length === 0) return;
 
     const newItems: ImageItem[] = fileArray.map((file) => ({
