@@ -6,6 +6,7 @@ import {
   getApiHitById,
   updateApiHitResultImage,
   getHistorySummaryCounts,
+  getApiHitsCount,
   getAllActiveImageUrls,
 } from '@/lib/db';
 import {
@@ -30,19 +31,26 @@ export async function GET(req: NextRequest) {
   }
 
   const type = searchParams.get('type') || 'all';
-  const limit = Math.min(Number(searchParams.get('limit')) || 50, 200);
-  const offset = Number(searchParams.get('offset')) || 0;
+  const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+  const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 3, 1), 100);
+  const search = searchParams.get('search')?.trim() || '';
+  const offset = searchParams.has('page') ? (page - 1) * limit : Number(searchParams.get('offset')) || 0;
 
-  const items = getApiHits({ type, limit, offset });
+  const items = getApiHits({ type, limit, offset, search });
   const summaryCounts = getHistorySummaryCounts();
-  const totalCount = type === 'generation' ? summaryCounts.generation : type === 'edit' ? summaryCounts.edit : summaryCounts.all;
+  const totalCount = getApiHitsCount(type, search);
+  const totalPages = Math.max(Math.ceil(totalCount / limit), 1);
 
   return NextResponse.json({
     items,
-    count: totalCount,
+    page,
+    limit,
     total: totalCount,
+    totalPages,
+    count: totalCount,
     summaryCounts,
     type,
+    search,
   });
 }
 

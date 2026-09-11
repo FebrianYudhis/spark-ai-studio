@@ -174,27 +174,40 @@ export function saveApiHit(data: CreateApiHitInput): number {
   return Number(result.lastInsertRowid);
 }
 
-export function getApiHits(options?: { type?: string; limit?: number; offset?: number }): ApiHitRecord[] {
+export function getApiHits(options?: {
+  type?: string;
+  limit?: number;
+  offset?: number;
+  search?: string;
+}): ApiHitRecord[] {
   const db = getDb();
   const limit = options?.limit ?? 50;
   const offset = options?.offset ?? 0;
+  const search = options?.search?.trim();
+
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
 
   if (options?.type && options.type !== 'all') {
-    const stmt = db.prepare(`
-      SELECT * FROM api_hits
-      WHERE type = ?
-      ORDER BY id DESC
-      LIMIT ? OFFSET ?
-    `);
-    return stmt.all(options.type, limit, offset) as unknown as ApiHitRecord[];
+    conditions.push(`type = ?`);
+    params.push(options.type);
   }
 
+  if (search) {
+    conditions.push(`(prompt LIKE ? OR model LIKE ? OR source_image_name LIKE ?)`);
+    const searchPattern = `%${search}%`;
+    params.push(searchPattern, searchPattern, searchPattern);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const stmt = db.prepare(`
     SELECT * FROM api_hits
+    ${whereClause}
     ORDER BY id DESC
     LIMIT ? OFFSET ?
   `);
-  return stmt.all(limit, offset) as unknown as ApiHitRecord[];
+
+  return stmt.all(...params, limit, offset) as unknown as ApiHitRecord[];
 }
 
 export function getApiHitById(id: number): ApiHitRecord | null {
@@ -230,15 +243,25 @@ export function clearApiHits(type?: string): number {
   return Number(res.changes);
 }
 
-export function getApiHitsCount(type?: string): number {
+export function getApiHitsCount(type?: string, search?: string): number {
   const db = getDb();
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
   if (type && type !== 'all') {
-    const stmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE type = ?`);
-    const row = stmt.get(type) as { count: number } | undefined;
-    return Number(row?.count ?? 0);
+    conditions.push(`type = ?`);
+    params.push(type);
   }
-  const stmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits`);
-  const row = stmt.get() as { count: number } | undefined;
+
+  if (search && search.trim()) {
+    conditions.push(`(prompt LIKE ? OR model LIKE ? OR source_image_name LIKE ?)`);
+    const searchPattern = `%${search.trim()}%`;
+    params.push(searchPattern, searchPattern, searchPattern);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits ${whereClause}`);
+  const row = stmt.get(...params) as { count: number } | undefined;
   return Number(row?.count ?? 0);
 }
 

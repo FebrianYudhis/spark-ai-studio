@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive } from 'lucide-react';
+import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
@@ -39,11 +39,26 @@ export default function HistoryTab({
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<'all' | 'generation' | 'edit'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(3);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   const [selectedItem, setSelectedItem] = useState<ApiHitRecord | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
   const [cleaningStorage, setCleaningStorage] = useState(false);
+
+  // Debounce input pencarian selama 300ms dan reset ke halaman 1
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleCopyPrompt = (promptText: string, id: number) => {
     navigator.clipboard.writeText(promptText);
@@ -96,10 +111,20 @@ export default function HistoryTab({
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const url = filterType === 'all' ? '/api/history?limit=100' : `/api/history?type=${filterType}&limit=100`;
-      const [res] = await Promise.all([fetch(url), fetchStorageStats()]);
+      const params = new URLSearchParams();
+      if (filterType !== 'all') params.set('type', filterType);
+      params.set('page', String(page));
+      params.set('limit', String(limit));
+      if (debouncedSearch) params.set('search', debouncedSearch);
+
+      const [res] = await Promise.all([
+        fetch(`/api/history?${params.toString()}`),
+        fetchStorageStats(),
+      ]);
       const data = await res.json();
       setItems(data.items || []);
+      setTotalCount(data.total ?? 0);
+      setTotalPages(data.totalPages ?? 1);
       if (data.summaryCounts) {
         setSummaryCounts(data.summaryCounts);
       }
@@ -112,7 +137,7 @@ export default function HistoryTab({
 
   useEffect(() => {
     fetchHistory();
-  }, [filterType, refreshTrigger]);
+  }, [filterType, refreshTrigger, page, limit, debouncedSearch]);
 
   const handleDeleteItem = async (id: number) => {
     const confirmed = await showConfirm({
@@ -127,10 +152,13 @@ export default function HistoryTab({
     try {
       const res = await fetch(`/api/history?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setItems((prev) => prev.filter((it) => it.id !== id));
         showToast(`Riwayat #${id} dan file gambarnya berhasil dihapus`, 'success');
         onUpdateHistory?.();
-        fetchHistory();
+        if (items.length === 1 && page > 1) {
+          setPage((p) => p - 1);
+        } else {
+          fetchHistory();
+        }
         fetchStorageStats();
       } else {
         showError('Gagal Menghapus', 'Gagal menghapus riwayat dari database');
@@ -157,6 +185,7 @@ export default function HistoryTab({
       const res = await fetch(url, { method: 'DELETE' });
       if (res.ok) {
         setItems([]);
+        setPage(1);
         showToast('Semua riwayat dan file gambarnya berhasil dibersihkan', 'success');
         onUpdateHistory?.();
         fetchHistory();
@@ -224,16 +253,30 @@ export default function HistoryTab({
     return [val];
   };
 
-  const filteredItems = items.filter((item) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      item.prompt.toLowerCase().includes(query) ||
-      item.model.toLowerCase().includes(query) ||
-      item.endpoint.toLowerCase().includes(query) ||
-      (item.source_image_name && item.source_image_name.toLowerCase().includes(query))
-    );
-  });
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push('...');
+      const start = Math.max(2, page - 1);
+      const end = Math.min(totalPages - 1, page + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (page < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === page) return;
+    setPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Filter sudah dilakukan di tingkat server-side database (termasuk pagination dan search)
+  const filteredItems = items;
 
   return (
     <div className="space-y-6">
@@ -242,7 +285,10 @@ export default function HistoryTab({
         {/* Type Filter Pills */}
         <div className="flex items-center gap-1 sm:gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 overflow-x-auto w-full lg:w-auto">
           <button
-            onClick={() => setFilterType('all')}
+            onClick={() => {
+              setFilterType('all');
+              setPage(1);
+            }}
             className={`flex-1 lg:flex-initial px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               filterType === 'all'
                 ? 'bg-white text-slate-900 shadow-xs'
@@ -252,7 +298,10 @@ export default function HistoryTab({
             Semua ({summaryCounts.all})
           </button>
           <button
-            onClick={() => setFilterType('generation')}
+            onClick={() => {
+              setFilterType('generation');
+              setPage(1);
+            }}
             className={`flex-1 lg:flex-initial px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all whitespace-nowrap ${
               filterType === 'generation'
                 ? 'bg-purple-600 text-white shadow-xs'
@@ -263,7 +312,10 @@ export default function HistoryTab({
             <span className="hidden sm:inline">Image </span>Generations ({summaryCounts.generation})
           </button>
           <button
-            onClick={() => setFilterType('edit')}
+            onClick={() => {
+              setFilterType('edit');
+              setPage(1);
+            }}
             className={`flex-1 lg:flex-initial px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all whitespace-nowrap ${
               filterType === 'edit'
                 ? 'bg-emerald-600 text-white shadow-xs'
@@ -342,9 +394,13 @@ export default function HistoryTab({
       ) : filteredItems.length === 0 ? (
         <div className="p-16 bg-white border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 shadow-sm">
           <History className="w-12 h-12 text-slate-300" />
-          <p className="text-base font-semibold text-slate-800">Belum Ada Riwayat HIT API</p>
+          <p className="text-base font-semibold text-slate-800">
+            {debouncedSearch.trim() ? 'Tidak Ada Riwayat yang Cocok' : 'Belum Ada Riwayat HIT API'}
+          </p>
           <p className="text-xs text-slate-500 max-w-sm">
-            Setiap request yang Anda kirimkan melalui menu Image Generations atau Image Edits akan otomatis tercatat di sini.
+            {debouncedSearch.trim()
+              ? `Tidak ditemukan riwayat yang cocok dengan kata kunci "${debouncedSearch}".`
+              : 'Setiap request yang Anda kirimkan melalui menu Image Generations atau Image Edits akan otomatis tercatat di sini.'}
           </p>
         </div>
       ) : (
@@ -637,6 +693,107 @@ export default function HistoryTab({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalCount > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+          {/* Left: Item range & Limit selector */}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <span>
+              Menampilkan{' '}
+              <span className="font-semibold text-slate-800">
+                {Math.min((page - 1) * limit + 1, totalCount)} - {Math.min(page * limit, totalCount)}
+              </span>{' '}
+              dari <span className="font-semibold text-slate-800">{totalCount}</span> riwayat
+            </span>
+
+            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+              <span className="text-slate-500">Tampilkan:</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-600 cursor-pointer"
+              >
+                <option value={3}>3 / hal</option>
+                <option value={6}>6 / hal</option>
+                <option value={9}>9 / hal</option>
+                <option value={12}>12 / hal</option>
+                <option value={15}>15 / hal</option>
+                <option value={30}>30 / hal</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Right: Page navigation */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handlePageChange(1)}
+                disabled={page === 1}
+                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none rounded-lg transition-colors cursor-pointer"
+                title="Halaman Pertama"
+              >
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page === 1}
+                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none rounded-lg transition-colors cursor-pointer"
+                title="Halaman Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-1 px-1">
+                {getPageNumbers().map((pNum, idx) =>
+                  pNum === '...' ? (
+                    <span key={`dots-${idx}`} className="px-2 py-1 text-xs text-slate-400 select-none">
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={`page-${pNum}`}
+                      type="button"
+                      onClick={() => handlePageChange(Number(pNum))}
+                      className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        page === pNum
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  )
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page === totalPages}
+                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none rounded-lg transition-colors cursor-pointer"
+                title="Halaman Berikutnya"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePageChange(totalPages)}
+                disabled={page === totalPages}
+                className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none rounded-lg transition-colors cursor-pointer"
+                title="Halaman Terakhir"
+              >
+                <ChevronsRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
