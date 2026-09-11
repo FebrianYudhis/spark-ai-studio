@@ -92,8 +92,8 @@ export default function Home() {
   const fetchConfigAndHistoryCount = async () => {
     try {
       const [configRes, historyRes] = await Promise.all([
-        fetch('/api/config'),
-        fetch('/api/history?limit=1'),
+        fetch(`/api/config?t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/history?limit=1&t=${Date.now()}`, { cache: 'no-store' }),
       ]);
 
       if (configRes.ok) {
@@ -116,6 +116,39 @@ export default function Home() {
 
   const handleSuccess = () => {
     setRefreshTrigger((prev) => prev + 1);
+  };
+
+  const handleSettingsSaveSuccess = (updatedConfig?: AppConfig) => {
+    if (updatedConfig) {
+      setConfig(updatedConfig);
+    }
+    fetchConfigAndHistoryCount();
+  };
+
+  const handleGenerationsModelChange = async (newModel: string) => {
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generationsModel: newModel }),
+      });
+      setConfig((prev) => (prev ? { ...prev, defaultGenerationsModel: newModel } : prev));
+    } catch (e) {
+      console.error('Failed to sync generations model:', e);
+    }
+  };
+
+  const handleEditsModelChange = async (newModel: string) => {
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editsModel: newModel }),
+      });
+      setConfig((prev) => (prev ? { ...prev, defaultEditsModel: newModel } : prev));
+    } catch (e) {
+      console.error('Failed to sync edits model:', e);
+    }
   };
 
   const handleSelectPromptFromHistory = (prompt: string, _model: string, type: 'generation' | 'edit') => {
@@ -165,7 +198,7 @@ export default function Home() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div className={activeTab === 'generation' ? 'block' : 'hidden'}>
           <GenerationsTab
-            defaultModel={config?.defaultGenerationsModel || 'dall-e-3'}
+            defaultModel={config?.defaultGenerationsModel || 'gpt-image-2.5'}
             baseUrl={config?.baseUrl || 'https://api.openai.com/v1'}
             isConfigured={Boolean(config?.isConfigured)}
             onSuccess={handleSuccess}
@@ -173,12 +206,13 @@ export default function Home() {
             presetPromptKey={presetPromptKey}
             onLoadingChange={setIsGenerationLoading}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onModelChange={handleGenerationsModelChange}
           />
         </div>
 
         <div className={activeTab === 'edit' ? 'block' : 'hidden'}>
           <EditsTab
-            defaultModel={config?.defaultEditsModel || 'dall-e-2'}
+            defaultModel={config?.defaultEditsModel || 'gpt-image-2.5'}
             baseUrl={config?.baseUrl || 'https://api.openai.com/v1'}
             isConfigured={Boolean(config?.isConfigured)}
             onSuccess={handleSuccess}
@@ -188,6 +222,7 @@ export default function Home() {
             presetEditSession={presetEditSession}
             onLoadingChange={setIsEditLoading}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onModelChange={handleEditsModelChange}
           />
         </div>
 
@@ -206,7 +241,7 @@ export default function Home() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onSaveSuccess={fetchConfigAndHistoryCount}
+        onSaveSuccess={handleSettingsSaveSuccess}
         currentConfig={config}
       />
 

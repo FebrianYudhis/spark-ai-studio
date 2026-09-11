@@ -59,8 +59,8 @@ function initSchema(db: DatabaseSync) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
       api_token TEXT NOT NULL DEFAULT '',
-      generations_model TEXT NOT NULL DEFAULT 'dall-e-3',
-      edits_model TEXT NOT NULL DEFAULT 'dall-e-2',
+      generations_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
+      edits_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
       updated_at TEXT NOT NULL
     );
   `);
@@ -294,8 +294,8 @@ export function getAppSettings(): AppSettings {
   if (!row) {
     const initialBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
     const initialToken = process.env.AI_API_TOKEN || '';
-    const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'dall-e-3';
-    const initialEditModel = process.env.AI_EDITS_MODEL || 'dall-e-2';
+    const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
+    const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
 
     db.prepare(`
       INSERT INTO app_settings (id, base_url, api_token, generations_model, edits_model, updated_at)

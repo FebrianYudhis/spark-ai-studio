@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getAppSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
+import { validateImageSize, validateImageQuality } from '@/lib/models';
 import path from 'node:path';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
   const settings = getAppSettings();
   const baseUrl = settings.base_url || 'https://api.openai.com/v1';
   const token = settings.api_token || '';
-  const defaultModel = settings.edits_model || 'dall-e-2';
+  const defaultModel = settings.edits_model || 'gpt-image-2.5';
 
   let formData: FormData;
   try {
@@ -24,11 +25,30 @@ export async function POST(req: NextRequest) {
   const prompt = (formData.get('prompt') as string)?.trim();
   // Model diambil dari form atau default settings SQLite
   const model = (formData.get('model') as string)?.trim() || defaultModel;
-  const size = (formData.get('size') as string)?.trim() || '1024x1024';
+  const size = (formData.get('size') as string)?.trim() || 'auto';
   const quality = (formData.get('quality') as string)?.trim() || 'auto';
+  const outputFormat = (formData.get('output_format') as string)?.trim() || 'png';
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400 });
+  }
+
+  // Validasi ukuran gambar sesuai spesifikasi OpenAI Images
+  const sizeValidation = validateImageSize(size);
+  if (!sizeValidation.valid) {
+    return NextResponse.json(
+      { error: sizeValidation.error || 'Ukuran gambar tidak valid' },
+      { status: 400 }
+    );
+  }
+
+  // Validasi kualitas gambar (quality) sesuai model
+  const qualityValidation = validateImageQuality(quality, model);
+  if (!qualityValidation.valid) {
+    return NextResponse.json(
+      { error: qualityValidation.error || 'Kualitas gambar tidak valid' },
+      { status: 400 }
+    );
   }
 
   // 1. Ambil file Primary Image
@@ -100,6 +120,7 @@ export async function POST(req: NextRequest) {
     ],
     size,
     quality,
+    output_format: outputFormat,
   };
 
   try {
@@ -112,10 +133,9 @@ export async function POST(req: NextRequest) {
         ...additionalDataUrls.map((dataUrl) => ({ image_url: dataUrl })),
       ],
       size,
+      quality,
+      output_format: outputFormat,
     };
-    if (quality && quality !== 'auto') {
-      forwardPayload.quality = quality;
-    }
 
     const apiResponse = await fetch(targetUrl, {
       method: 'POST',

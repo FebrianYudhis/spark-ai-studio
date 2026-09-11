@@ -1,8 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw } from 'lucide-react';
 import { showToast } from '@/lib/swal';
+import {
+  AVAILABLE_MODELS,
+  AvailableModel,
+  DEFAULT_MODEL,
+  isValidModel,
+  STANDARD_IMAGE_SIZES,
+  validateImageSize,
+  SIZE_PRESET_OPTIONS,
+  scaleImageDimensions,
+  ImageQuality,
+  getAvailableQualities,
+  modelSupportsUltraQuality,
+  validateImageQuality,
+} from '@/lib/models';
 
 interface GenerationsTabProps {
   defaultModel: string;
@@ -13,18 +27,13 @@ interface GenerationsTabProps {
   presetPromptKey?: number;
   onLoadingChange?: (loading: boolean) => void;
   onOpenSettings?: () => void;
+  onModelChange?: (model: AvailableModel) => void;
 }
 
 const SAMPLE_PROMPTS = [
   "Futuristic cyberpunk city street at night with neon lights and flying cars in heavy rain",
   "Oil painting of a calm mountain lake during sunset with vibrant orange and purple sky reflections",
   "Minimalist isometric 3D illustration of a cozy modern coffee shop interior with plants",
-];
-
-const PRESET_SIZES = [
-  { label: '1024x1024 (1:1 Persegi)', value: '1024x1024' },
-  { label: '1792x1024 (16:9 Lanskap)', value: '1792x1024' },
-  { label: '1024x1792 (9:16 Potret)', value: '1024x1792' },
 ];
 
 export default function GenerationsTab({
@@ -36,12 +45,37 @@ export default function GenerationsTab({
   presetPromptKey,
   onLoadingChange,
   onOpenSettings,
+  onModelChange,
 }: GenerationsTabProps) {
-  // Model selalu diambil dari .env dan tidak bisa diubah
-  const model = defaultModel || 'dall-e-3';
+  const [model, setModel] = useState<AvailableModel>(
+    defaultModel && isValidModel(defaultModel) ? defaultModel : DEFAULT_MODEL
+  );
+
+  useEffect(() => {
+    if (defaultModel && isValidModel(defaultModel)) {
+      setModel(defaultModel);
+    }
+  }, [defaultModel]);
+
   const [prompt, setPrompt] = useState(presetPrompt || '');
-  const [size, setSize] = useState('1024x1024');
-  const [quality, setQuality] = useState<'standard' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto'>('auto');
+  const [size, setSize] = useState('auto');
+  const [sizePreset, setSizePreset] = useState<string>('auto');
+  const [quality, setQuality] = useState<ImageQuality>('auto');
+
+  const handlePresetChange = (presetId: string) => {
+    setSizePreset(presetId);
+    const found = SIZE_PRESET_OPTIONS.find((p) => p.id === presetId);
+    if (found && !found.isCustom) {
+      setSize(found.value);
+    }
+  };
+
+  // Fallback otomatis kualitas jika model yang dipilih tidak mendukung xhigh / max
+  useEffect(() => {
+    if (!modelSupportsUltraQuality(model) && (quality === 'xhigh' || quality === 'max')) {
+      setQuality('auto');
+    }
+  }, [model, quality]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +91,8 @@ export default function GenerationsTab({
 
   const handleReset = () => {
     setPrompt('');
-    setSize('1024x1024');
+    setSize('auto');
+    setSizePreset('auto');
     setQuality('auto');
     setError(null);
     setResult(null);
@@ -77,25 +112,41 @@ export default function GenerationsTab({
       setError(null);
       setResult(null);
       setShowJson(false);
-      setSize('1024x1024');
+      setSize('auto');
+      setSizePreset('auto');
       setQuality('auto');
       setPrompt(presetPrompt);
     }
   }, [presetPrompt, presetPromptKey]);
 
-  // Scaler multiplier: 2x or 0.5x
+  // Scaler multiplier: 2x or 0.5x dengan batas edge limits OpenAI (maxDim <= 3840, minDim <= 2160)
   const handleScale = (factor: number) => {
-    const match = size.trim().match(/^(\d+)x(\d+)$/i);
-    if (match) {
-      const w = Math.round(Number(match[1]) * factor);
-      const h = Math.round(Number(match[2]) * factor);
-      setSize(`${w}x${h}`);
-    }
+    const newSize = scaleImageDimensions(size, factor);
+    setSize(newSize);
   };
+
+  const sizeValidation = validateImageSize(size);
+  const availableQualities = getAvailableQualities(model);
+  const supportsUltra = modelSupportsUltraQuality(model);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
+
+    if (!sizeValidation.valid) {
+      const errMsg = sizeValidation.error || 'Ukuran gambar tidak valid';
+      setError(errMsg);
+      showToast(errMsg, 'error');
+      return;
+    }
+
+    const qualityValidation = validateImageQuality(quality, model);
+    if (!qualityValidation.valid) {
+      const errMsg = qualityValidation.error || 'Kualitas gambar tidak valid';
+      setError(errMsg);
+      showToast(errMsg, 'error');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -110,6 +161,7 @@ export default function GenerationsTab({
           prompt: prompt.trim(),
           size: size.trim(),
           quality,
+          output_format: 'png',
         }),
       });
 
@@ -123,10 +175,19 @@ export default function GenerationsTab({
         showToast('Gambar berhasil di-generate!', 'success');
       }
 
-      setResult(data);
-      onSuccess();
+      setResult({
+        resultImageUrl: data.imageUrl,
+        statusCode: res.status,
+        requestPayload: data.requestPayload || {},
+        response: data.rawResponse || data,
+        historyId: data.historyId,
+      });
+
+      if (res.ok && data.success) {
+        onSuccess();
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Koneksi ke server gagal';
+      const msg = err instanceof Error ? err.message : 'Terjadi kegagalan jaringan saat menghubungi server lokal';
       setError(msg);
       showToast(msg, 'error');
     } finally {
@@ -176,27 +237,44 @@ export default function GenerationsTab({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Model Display */}
+            {/* Model Selection Dropdown */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Settings className="w-3.5 h-3.5 text-purple-600" />
+                <label htmlFor="gen-model-select" className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
                   Model AI
                 </label>
-                <span className="text-[11px] text-slate-500 font-mono">Default Pengaturan</span>
-              </div>
-              <div className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-800 font-mono font-semibold flex items-center justify-between">
-                <span>{model}</span>
                 {onOpenSettings && (
                   <button
                     type="button"
                     onClick={onOpenSettings}
-                    className="text-xs font-sans font-medium px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                    className="text-xs font-sans font-medium text-purple-600 hover:text-purple-700 flex items-center gap-1 cursor-pointer transition-colors"
                   >
-                    <Settings className="w-3 h-3 text-purple-600" />
-                    Ubah
+                    <Settings className="w-3 h-3" />
+                    Setelan
                   </button>
                 )}
+              </div>
+              <div className="relative">
+                <select
+                  id="gen-model-select"
+                  value={model}
+                  onChange={(e) => {
+                    const next = e.target.value as AvailableModel;
+                    setModel(next);
+                    onModelChange?.(next);
+                  }}
+                  className="w-full appearance-none px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-slate-900 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer pr-10 transition-all shadow-2xs"
+                >
+                  {AVAILABLE_MODELS.map((m) => (
+                    <option key={m} value={m} className="font-mono py-1">
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                  <ChevronDown className="w-4 h-4" />
+                </div>
               </div>
             </div>
 
@@ -234,94 +312,217 @@ export default function GenerationsTab({
               </div>
             </div>
 
-            {/* Size Configuration: Manual + 3 Presets + (x2) & (:2) */}
+            {/* Size Configuration: Preset Select + Custom Option */}
             <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Maximize2 className="w-3.5 h-3.5 text-purple-600" />
-                  Ukuran Gambar (Size)
-                </label>
-                <span className="text-[11px] text-slate-500">Bisa isi manual atau pilih preset</span>
-              </div>
-
-              {/* Manual Input with (x2) and (:2) Buttons */}
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={size}
-                    onChange={(e) => setSize(e.target.value)}
-                    placeholder="misal: 1024x1024, 1920x1080, dll."
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-mono text-slate-800 font-semibold placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
-                    required
-                  />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-0.5">
+                    <Maximize2 className="w-3.5 h-3.5 text-purple-600" />
+                    Ukuran Gambar (Size)
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Pilih rasio preset standar atau tentukan resolusi kustom
+                  </span>
                 </div>
-
-                {/* Button (x2) */}
-                <button
-                  type="button"
-                  onClick={() => handleScale(2)}
-                  className="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer"
-                  title="Kalikan resolusi 2x (x2)"
-                >
-                  (x2)
-                </button>
-
-                {/* Button (:2) */}
-                <button
-                  type="button"
-                  onClick={() => handleScale(0.5)}
-                  className="px-3.5 py-2.5 bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer"
-                  title="Bagi resolusi 2 (:2)"
-                >
-                  (:2)
-                </button>
+                <div className="w-full sm:w-72">
+                  <select
+                    value={sizePreset}
+                    onChange={(e) => handlePresetChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer shadow-2xs"
+                  >
+                    {SIZE_PRESET_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* 3 Quick Presets Chips */}
-              <div className="space-y-1.5 pt-1">
-                <span className="text-[11px] text-slate-500 font-medium">3 Preset Utama:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {PRESET_SIZES.map((preset) => (
+              {/* Tampilan Resolusi Saat Preset Standar Aktif */}
+              {sizePreset !== 'custom' ? (
+                <div className="pt-2 border-t border-slate-200 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-600 font-medium">Resolusi Aktif:</span>
+                      <span className="px-2.5 py-1 bg-purple-100/80 text-purple-900 border border-purple-200 rounded-md font-mono font-bold text-xs">
+                        {size === 'auto' ? 'auto (Ukuran Otomatis)' : `${size} (${sizePreset})`}
+                      </span>
+                    </div>
+
+                    {/* Tombol Pengali Resolusi Preset (x2) dan (:2) */}
+                    {size !== 'auto' && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-slate-500 font-medium mr-0.5">Ubah Skala:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleScale(2)}
+                          className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-300 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer shadow-2xs hover:border-purple-400 active:scale-95"
+                          title="Kalikan resolusi 2x (kelipatan 16)"
+                        >
+                          (x2)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleScale(0.5)}
+                          className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 hover:text-purple-800 border border-purple-300 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer shadow-2xs hover:border-purple-400 active:scale-95"
+                          title="Bagi resolusi 2 (kelipatan 16)"
+                        >
+                          (:2)
+                        </button>
+                        {/* Tombol Reset ke resolusi default preset jika sudah diskalakan */}
+                        {(() => {
+                          const defaultVal = SIZE_PRESET_OPTIONS.find((p) => p.id === sizePreset)?.value;
+                          if (defaultVal && size !== defaultVal) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setSize(defaultVal)}
+                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-300 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
+                                title="Kembalikan ke resolusi standar preset"
+                              >
+                                Reset ({defaultVal})
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Peringatan jika resolusi preset hasil scaling melebihi 2560x1440 */}
+                  {sizeValidation.isExperimental && (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                      <span>
+                        Resolusi <strong>{sizeValidation.width}x{sizeValidation.height}</strong> di atas 2560x1440 bersifat eksperimental (Maks 3840x2160).
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Mode Custom: Input resolusi manual + pengali + validasi + peringatan aturan */
+                <div className="pt-3 border-t border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700">Resolusi Kustom (WIDTHxHEIGHT):</span>
+                    <span className="text-[11px] text-slate-500 font-mono">Wajib kelipatan 16</span>
+                  </div>
+
+                  {/* Manual Input with (x2) and (:2) Buttons */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={size}
+                        onChange={(e) => setSize(e.target.value)}
+                        placeholder="misal: 1536x864, 1280x720, 1024x1024, auto"
+                        className={`w-full px-3.5 py-2 bg-white border rounded-xl text-sm font-mono text-slate-800 font-semibold placeholder-slate-400 focus:outline-none transition-all ${
+                          !sizeValidation.valid
+                            ? 'border-red-400 focus:border-red-600 focus:ring-1 focus:ring-red-600 bg-red-50/20'
+                            : sizeValidation.isExperimental
+                            ? 'border-amber-400 focus:border-amber-600 focus:ring-1 focus:ring-amber-600'
+                            : 'border-slate-300 focus:border-purple-600 focus:ring-1 focus:ring-purple-600'
+                        }`}
+                        required
+                      />
+                    </div>
+
+                    {/* Button (x2) */}
                     <button
-                      key={preset.value}
                       type="button"
-                      onClick={() => setSize(preset.value)}
-                      className={`text-xs px-3 py-1.5 rounded-lg border transition-all font-mono font-medium ${
-                        size === preset.value
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-100'
-                      }`}
+                      onClick={() => handleScale(2)}
+                      className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Kalikan resolusi 2x (kelipatan 16)"
+                      disabled={size.trim().toLowerCase() === 'auto'}
                     >
-                      {preset.label}
+                      (x2)
                     </button>
-                  ))}
+
+                    {/* Button (:2) */}
+                    <button
+                      type="button"
+                      onClick={() => handleScale(0.5)}
+                      className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Bagi resolusi 2 (kelipatan 16)"
+                      disabled={size.trim().toLowerCase() === 'auto'}
+                    >
+                      (:2)
+                    </button>
+                  </div>
+
+                  {/* Status Validasi Ukuran Real-Time */}
+                  <div>
+                    {!sizeValidation.valid ? (
+                      <div className="flex items-center gap-1.5 text-xs text-red-600 font-medium bg-red-50 border border-red-200 p-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+                        <span>{sizeValidation.error}</span>
+                      </div>
+                    ) : sizeValidation.isAuto ? (
+                      <div className="flex items-center gap-1.5 text-xs text-purple-800 bg-purple-50/70 border border-purple-200 p-2 rounded-lg">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-purple-600" />
+                        <span>Mode <strong>auto</strong>: Model akan menentukan ukuran dan rasio secara otomatis.</span>
+                      </div>
+                    ) : sizeValidation.isExperimental ? (
+                      <div className="flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                        <span>
+                          Resolusi <strong>{sizeValidation.width}x{sizeValidation.height}</strong> di atas 2560x1440 bersifat eksperimental (Maks 3840x2160).
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50/70 border border-emerald-200 p-2 rounded-lg">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                        <span>
+                          Resolusi valid ({sizeValidation.width}x{sizeValidation.height}) • Kelipatan 16 • Rasio {(sizeValidation.width! / sizeValidation.height!).toFixed(2)}:1
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Peringatan & Aturan Resolusi OpenAI Images (Hanya tampil pada mode custom) */}
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1 leading-relaxed">
+                    <p className="font-semibold flex items-center gap-1 text-amber-950">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      Peringatan & Aturan Resolusi Kustom OpenAI Images:
+                    </p>
+                    <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
+                      <li>Format string wajib <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">WIDTHxHEIGHT</code> (misal <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">1536x864</code>) atau <code className="font-mono bg-amber-100/70 px-1 py-0.5 rounded text-amber-950">auto</code>.</li>
+                      <li>Lebar dan tinggi keduanya <strong>wajib habis dibagi 16</strong>.</li>
+                      <li>Aspect ratio wajib berada di rentang <strong>1:3</strong> hingga <strong>3:1</strong>.</li>
+                      <li>Resolusi di atas 2560x1440 bersifat eksperimental (Batas maksimum absolut: <strong>3840x2160</strong>).</li>
+                    </ul>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Quality Configuration */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-0.5">
-                  Kualitas Output (Quality)
-                </label>
-                <span className="text-[11px] text-slate-500">Pilih tingkat kualitas output gambar AI</span>
-              </div>
-              <div className="w-full sm:w-64">
-                <select
-                  value={quality}
-                  onChange={(e) => setQuality(e.target.value as typeof quality)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer shadow-2xs"
-                >
-                  <option value="auto">auto (Default)</option>
-                  <option value="standard">standard</option>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                  <option value="xhigh">xhigh</option>
-                  <option value="max">max</option>
-                </select>
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-0.5">
+                    Kualitas Output (Quality)
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    {supportsUltra
+                      ? 'Didukung: auto, low, medium, high, xhigh, max'
+                      : 'Didukung: auto, low, medium, high'}
+                  </span>
+                </div>
+                <div className="w-full sm:w-72">
+                  <select
+                    value={quality}
+                    onChange={(e) => setQuality(e.target.value as ImageQuality)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer shadow-2xs"
+                  >
+                    {availableQualities.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 

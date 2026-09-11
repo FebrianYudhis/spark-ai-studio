@@ -1,13 +1,24 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Key, Globe, Sparkles, Scissors, Eye, EyeOff, Save, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { X, Settings, Key, Globe, Sparkles, Scissors, Eye, EyeOff, Save, RefreshCw, CheckCircle2, ChevronDown } from 'lucide-react';
 import { showToast, showError } from '@/lib/swal';
+import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel } from '@/lib/models';
+
+export interface AppConfigData {
+  baseUrl: string;
+  isConfigured: boolean;
+  maskedToken: string;
+  rawToken?: string;
+  defaultGenerationsModel: string;
+  defaultEditsModel: string;
+  updatedAt?: string;
+}
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaveSuccess: () => void;
+  onSaveSuccess: (updatedConfig?: AppConfigData) => void;
   currentConfig?: {
     baseUrl: string;
     rawToken?: string;
@@ -17,9 +28,6 @@ interface SettingsModalProps {
   } | null;
 }
 
-const COMMON_GEN_MODELS = ['dall-e-3', 'gpt-image-2.5', 'dall-e-2'];
-const COMMON_EDIT_MODELS = ['gpt-image-2.5', 'dall-e-2', 'dall-e-3'];
-
 export default function SettingsModal({
   isOpen,
   onClose,
@@ -28,8 +36,8 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
   const [token, setToken] = useState('');
-  const [generationsModel, setGenerationsModel] = useState('dall-e-3');
-  const [editsModel, setEditsModel] = useState('dall-e-2');
+  const [generationsModel, setGenerationsModel] = useState<AvailableModel>(DEFAULT_MODEL);
+  const [editsModel, setEditsModel] = useState<AvailableModel>(DEFAULT_MODEL);
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -38,18 +46,34 @@ export default function SettingsModal({
       if (currentConfig) {
         setBaseUrl(currentConfig.baseUrl || 'https://api.openai.com/v1');
         setToken(currentConfig.rawToken || '');
-        setGenerationsModel(currentConfig.defaultGenerationsModel || 'dall-e-3');
-        setEditsModel(currentConfig.defaultEditsModel || 'dall-e-2');
+        setGenerationsModel(
+          currentConfig.defaultGenerationsModel && isValidModel(currentConfig.defaultGenerationsModel)
+            ? currentConfig.defaultGenerationsModel
+            : DEFAULT_MODEL
+        );
+        setEditsModel(
+          currentConfig.defaultEditsModel && isValidModel(currentConfig.defaultEditsModel)
+            ? currentConfig.defaultEditsModel
+            : DEFAULT_MODEL
+        );
       } else {
         // Fetch if not provided
-        fetch('/api/config')
+        fetch(`/api/config?t=${Date.now()}`, { cache: 'no-store' })
           .then((res) => res.json())
           .then((data) => {
             if (data) {
               setBaseUrl(data.baseUrl || 'https://api.openai.com/v1');
               setToken(data.rawToken || '');
-              setGenerationsModel(data.defaultGenerationsModel || 'dall-e-3');
-              setEditsModel(data.defaultEditsModel || 'dall-e-2');
+              setGenerationsModel(
+                data.defaultGenerationsModel && isValidModel(data.defaultGenerationsModel)
+                  ? data.defaultGenerationsModel
+                  : DEFAULT_MODEL
+              );
+              setEditsModel(
+                data.defaultEditsModel && isValidModel(data.defaultEditsModel)
+                  ? data.defaultEditsModel
+                  : DEFAULT_MODEL
+              );
             }
           })
           .catch(console.error);
@@ -78,7 +102,7 @@ export default function SettingsModal({
       const data = await res.json();
       if (res.ok && data.success) {
         showToast('Pengaturan berhasil disimpan!', 'success');
-        onSaveSuccess();
+        onSaveSuccess(data.config);
         onClose();
       } else {
         showError('Gagal Menyimpan', data.error || 'Gagal menyimpan pengaturan ke database');
@@ -185,10 +209,10 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {/* Model Generations Input */}
+          {/* Model Generations Dropdown */}
           <div className="space-y-2 p-3.5 bg-purple-50/50 border border-purple-200 rounded-xl">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+              <label htmlFor="generations-model-select" className="text-xs font-semibold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-purple-600" />
                 Model Default Image Generations
               </label>
@@ -196,37 +220,33 @@ export default function SettingsModal({
                 Generations
               </span>
             </div>
-            <input
-              type="text"
-              value={generationsModel}
-              onChange={(e) => setGenerationsModel(e.target.value)}
-              placeholder="dall-e-3 atau gpt-image-2.5"
-              className="w-full px-3.5 py-2 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all"
-              required
-            />
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="text-[10px] text-slate-500 font-medium">Preset cepat:</span>
-              {COMMON_GEN_MODELS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setGenerationsModel(m)}
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                    generationsModel === m
-                      ? 'bg-purple-600 text-white border-purple-600 font-bold'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-100'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
+            <div className="relative">
+              <select
+                id="generations-model-select"
+                value={generationsModel}
+                onChange={(e) => setGenerationsModel(e.target.value as AvailableModel)}
+                className="w-full appearance-none px-3.5 py-2.5 bg-white border border-purple-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-purple-950 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer pr-10 transition-all shadow-2xs"
+                required
+              >
+                {AVAILABLE_MODELS.map((m) => (
+                  <option key={m} value={m} className="font-mono py-1 text-slate-800">
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-purple-700">
+                <ChevronDown className="w-4 h-4" />
+              </div>
             </div>
+            <p className="text-[11px] text-slate-500">
+              Pilih model AI default untuk pembuatan gambar dari teks (Generations).
+            </p>
           </div>
 
-          {/* Model Edits Input */}
+          {/* Model Edits Dropdown */}
           <div className="space-y-2 p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+              <label htmlFor="edits-model-select" className="text-xs font-semibold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Scissors className="w-3.5 h-3.5 text-emerald-600" />
                 Model Default Image Edits
               </label>
@@ -234,31 +254,27 @@ export default function SettingsModal({
                 Edits
               </span>
             </div>
-            <input
-              type="text"
-              value={editsModel}
-              onChange={(e) => setEditsModel(e.target.value)}
-              placeholder="gpt-image-2.5 atau dall-e-2"
-              className="w-full px-3.5 py-2 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-emerald-950 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all"
-              required
-            />
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="text-[10px] text-slate-500 font-medium">Preset cepat:</span>
-              {COMMON_EDIT_MODELS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setEditsModel(m)}
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                    editsModel === m
-                      ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-emerald-100'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
+            <div className="relative">
+              <select
+                id="edits-model-select"
+                value={editsModel}
+                onChange={(e) => setEditsModel(e.target.value as AvailableModel)}
+                className="w-full appearance-none px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs sm:text-sm font-mono font-semibold text-emerald-950 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer pr-10 transition-all shadow-2xs"
+                required
+              >
+                {AVAILABLE_MODELS.map((m) => (
+                  <option key={m} value={m} className="font-mono py-1 text-slate-800">
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-emerald-700">
+                <ChevronDown className="w-4 h-4" />
+              </div>
             </div>
+            <p className="text-[11px] text-slate-500">
+              Pilih model AI default untuk pengeditan gambar (Edits).
+            </p>
           </div>
 
           {/* Footer / Submit Buttons */}

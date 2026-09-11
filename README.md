@@ -1,15 +1,22 @@
-# ✨ Spark AI Studio - Image Generations & Edits Manager
+# ✨ Spark AI Studio - OpenAI Images Manager
 
-Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request ke AI Image API (**Image Generations** & **Image Edits**) dengan penyimpanan SQLite lokal, pengelolaan disk otomatis, serta konfigurasi langsung melalui antarmuka web.
+Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request ke **OpenAI Images API** (**Image Generations** & **Image Edits**) dengan penyimpanan SQLite lokal, pengelolaan disk otomatis, serta konfigurasi terpadu melalui antarmuka web.
 
 > [!IMPORTANT]
-> **Kompatibilitas API: Khusus OpenAI-Compatible Only**  
-> Aplikasi ini dirancang dan dioptimalkan secara khusus untuk bekerja dengan layanan AI yang **kompatibel dengan format API OpenAI** (misalnya OpenAI resmi, Azure OpenAI, ataupun third-party AI proxy/gateway seperti OpenRouter, LocalAI, vLLM, OneAPI, dll.) yang mendukung skema endpoint standar:
+> **Khusus & Hanya Support OpenAI Images API**  
+> Aplikasi ini dirancang dan dioptimalkan secara eksklusif untuk **OpenAI Images API** (resmi maupun proxy/gateway yang 100% kompatibel dengan format skema OpenAI Images):
 >
 > - `POST {base_url}/images/generations`
 > - `POST {base_url}/images/edits`
 >
-> Format otentikasi menggunakan header standar `Authorization: Bearer <token>` dan format request `application/json`.
+> Format otentikasi menggunakan header standar `Authorization: Bearer <token>` dan payload JSON.
+>
+> **4 Model Resmi yang Didukung (Strict Dropdown):**  
+> Pemilihan model telah dikunci menggunakan sistem dropdown (tidak ada input teks bebas) untuk memastikan kestabilan dan kompatibilitas:
+> 1. **`gpt-image-2`**
+> 2. **`gpt-image-2.5`** *(Default)*
+> 3. **`gpt-image-2.5-flare`**
+> 4. **`gpt-image-2.5-sunburst`**
 
 ---
 
@@ -17,21 +24,39 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
 
 ### 1. **Image Generations (`{base_url}/images/generations`)**
 
+- **Dropdown Pemilihan Model**: Langsung memilih dari 4 model yang didukung (`gpt-image-2`, `gpt-image-2.5`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`).
 - **Payload `application/json` murni**:
   ```json
   {
     "model": "gpt-image-2.5",
     "prompt": "Cyberpunk city street at night in heavy rain...",
-    "size": "1024x1024",
-    "quality": "standard"
+    "size": "auto",
+    "quality": "auto",
+    "output_format": "png"
   }
   ```
-- **Kontrol Ukuran Fleksibel (`size`)**:
-  - Input teks manual (bebas mengetikkan resolusi kustom apa saja, misal `1920x1080`).
-  - 3 Tombol Preset Cepat: `1024x1024` (1:1 Persegi), `1792x1024` (16:9 Lanskap), dan `1024x1792` (9:16 Potret).
-  - Tombol Pengali Resolusi: **`(x2)`** (mengalikan 2x) dan **`(:2)`** (membagi dua).
+- **Parameter `output_format` Otomatis**: Default bernilai `"png"` untuk format gambar lossless berstandar tinggi.
+- **Pengaturan Ukuran Gambar (`size`) dengan Select Preset & Mode Custom**:
+  - **Dropdown Preset Rasio Standar**: Memilih ukuran instan via dropdown:
+    - `auto (Ukuran Otomatis — Default)`: Menyerahkan penentuan ukuran pada model AI secara otomatis.
+    - `1:1 (Persegi)`: `1024x1024`
+    - `3:2 (Lanskap)`: `1536x1024`
+    - `2:3 (Potret)`: `1024x1536`
+    - `16:9 (Widescreen)`: `1536x864`
+    - `9:16 (Story / Vertikal)`: `864x1536`
+  - **Dukungan Pengali Cerdas `(x2)` & `(:2)` untuk Preset & Custom**:
+    - Baik resolusi yang dipilih dari preset dropdown (seperti 1:1, 3:2, 16:9, dll.) maupun mode kustom dapat langsung dinaikkan atau diturunkan skalanya secara proporsional.
+    - Pembulatan ke kelipatan 16 dan kepatuhan terhadap batas dimensi OpenAI Images (maksimum 3840x2160 untuk lanskap, 2160x3840 untuk potret, dan 2160x2160 untuk persegi 1:1) dihitung secara otomatis.
+    - Tersedia tombol **Reset** cepat untuk mengembalikan ke resolusi dasar preset.
+  - **Mode Custom (Resolusi Kustom Bebas)**:
+    - Pengguna dapat mengetikkan resolusi manual dalam format `WIDTHxHEIGHT`.
+    - Menampilkan kotak **Peringatan & Aturan Resolusi OpenAI Images** secara khusus pada mode kustom (keduanya wajib kelipatan 16, rentang aspect ratio 1:3 hingga 3:1, batas maksimum 3840x2160, dan peringatan eksperimental >2560x1440).
+    - Status validasi real-time langsung memverifikasi kepatuhan aturan sebelum request dikirimkan.
 - **Pilihan Kualitas Output (`quality`)**:
-  - Pilihan lengkap: `auto` (default sistem), `standard`, `low`, `medium`, `high`, `xhigh`, `max`.
+  - `auto` (default): Memilih kualitas terbaik secara otomatis sesuai model yang digunakan.
+  - `low`, `medium`, `high`: Didukung pada seluruh model GPT Image (`gpt-image-2`, `gpt-image-2.5`).
+  - `xhigh`, `max`: Didukung khusus pada model `gpt-image-2.5-sunburst` dan `gpt-image-2.5-flare` (termasuk snapshot `2026-09-08`).
+  - Dropdown dan validasi server-side otomatis menyesuaikan opsi yang tersedia sesuai model aktif, serta melakukan fallback aman jika model diganti.
 - **Sample Prompt Inspiratif**: Tombol chip prompt cepat untuk pengujian instan.
 - **Preview & Aksi Cepat**: Preview hasil gambar resolusi tinggi, tombol unduh (download), buka tab baru, dan modal inspeksi respons JSON.
 - **Tombol Reset Form**: Mengosongkan form dan preview dengan sekali klik.
@@ -40,6 +65,7 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
 
 ### 2. **Image Edits (`{base_url}/images/edits`)**
 
+- **Dropdown Pemilihan Model**: Memilih model edit langsung melalui dropdown dari 4 model yang didukung (`gpt-image-2`, `gpt-image-2.5`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`).
 - **Pengiriman JSON via Base64 Data URLs**:
   - Seluruh file gambar yang diunggah dikonversi otomatis menjadi format **Base64 Data URL** (`data:image/png;base64,...`), sehingga request dikirimkan sebagai payload JSON tanpa kerumitan form-data multipart:
     ```json
@@ -47,14 +73,36 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
       "model": "gpt-image-2.5",
       "prompt": "Tambahkan efek kacamata hitam...",
       "images": [{ "image_url": "data:image/png;base64,..." }],
-      "size": "1024x1024",
-      "quality": "standard"
+      "size": "auto",
+      "quality": "auto",
+      "output_format": "png"
     }
     ```
+- **Parameter `output_format` Otomatis**: Default bernilai `"png"` untuk format gambar lossless berkualitas tinggi.
+- **Pengaturan Ukuran Gambar (`size`) dengan Select Preset & Mode Custom**:
+  - **Dropdown Preset Rasio Standar**: Memilih ukuran instan via dropdown:
+    - `auto (Ukuran Otomatis — Default)`: Menyerahkan penentuan ukuran pada model AI secara otomatis.
+    - `1:1 (Persegi)`: `1024x1024`
+    - `3:2 (Lanskap)`: `1536x1024`
+    - `2:3 (Potret)`: `1024x1536`
+    - `16:9 (Widescreen)`: `1536x864`
+    - `9:16 (Story / Vertikal)`: `864x1536`
+  - **Dukungan Pengali Cerdas `(x2)` & `(:2)` untuk Preset & Custom**:
+    - Baik resolusi yang dipilih dari preset dropdown (seperti 1:1, 3:2, 16:9, dll.) maupun mode kustom dapat langsung dinaikkan atau diturunkan skalanya secara proporsional.
+    - Pembulatan ke kelipatan 16 dan kepatuhan terhadap batas dimensi OpenAI Images (maksimum 3840x2160 untuk lanskap, 2160x3840 untuk potret, dan 2160x2160 untuk persegi 1:1) dihitung secara otomatis.
+    - Tersedia tombol **Reset** cepat untuk mengembalikan ke resolusi dasar preset.
+  - **Mode Custom (Resolusi Kustom Bebas)**:
+    - Pengguna dapat mengetikkan resolusi manual dalam format `WIDTHxHEIGHT`.
+    - Menampilkan kotak **Peringatan & Aturan Resolusi OpenAI Images** secara khusus pada mode kustom (keduanya wajib kelipatan 16, rentang aspect ratio 1:3 hingga 3:1, batas maksimum 3840x2160, dan peringatan eksperimental >2560x1440).
+    - Status validasi real-time langsung memverifikasi kepatuhan aturan sebelum request dikirimkan.
 - **Arsitektur Multi-Layer Gambar**:
   - **Layer 1: Image Dasar (Primary)**: Gambar utama yang menjadi acuan edit.
   - **Layer 2: Image Tambahan (Additional)**: Multi-upload gambar referensi tambahan opsional (`image 1`, `image 2`, dst.).
-- **Kontrol Size & Quality Seragam**: Memiliki opsi ukuran (`size`) dan kualitas (`quality`) yang identik dengan menu Generations.
+- **Pilihan Kualitas Output (`quality`)**:
+  - `auto` (default): Memilih kualitas terbaik secara otomatis sesuai model yang digunakan.
+  - `low`, `medium`, `high`: Didukung pada seluruh model GPT Image (`gpt-image-2`, `gpt-image-2.5`).
+  - `xhigh`, `max`: Didukung khusus pada model `gpt-image-2.5-sunburst` dan `gpt-image-2.5-flare` (termasuk snapshot `2026-09-08`).
+  - Dropdown dan validasi server-side otomatis menyesuaikan opsi yang tersedia sesuai model aktif, serta melakukan fallback aman jika model diganti.
 - **Tampilan Perbandingan Berdampingan**: Menampilkan gambar sumber asli berdampingan dengan gambar hasil olahan AI.
 
 ---
@@ -78,11 +126,11 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
 
 - **Tanpa Perlu Restart Server atau Edit `.env.local` Manual**:
   - Pengaturan `baseUrl`, `apiToken`, `generationsModel`, dan `editsModel` disimpan langsung di tabel SQLite `app_settings`.
-  - **Modal Pengaturan Modern**: Dapat dibuka melalui tombol **Pengaturan** di navbar atau tombol **"Ubah"** pada card model di form.
+  - **Modal Pengaturan Modern**: Dapat dibuka melalui tombol **Pengaturan** di navbar atau tombol **Setelan** pada form.
   - **Fitur Modal**:
     - Edit Base URL API (dengan tombol _Reset ke Default OpenAI_).
     - Edit API Token dengan toggle intip/sembunyikan (Eye / EyeOff).
-    - Edit Default Model Generations & Edits dengan quick preset chip (`dall-e-3`, `gpt-image-2.5`, `dall-e-2`).
+    - **Dropdown Pemilihan Model (Tanpa Input Teks)**: Mengunci opsi model ke 4 pilihan resmi (`gpt-image-2`, `gpt-image-2.5`, `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst`) sehingga bebas dari typo atau model yang tidak valid.
     - Simpan instan dengan toast SweetAlert2; perubahan langsung aktif seketika pada request berikutnya.
 
 ---
@@ -175,6 +223,7 @@ spark-ai-studio/
 │   │   └── SettingsModal.tsx        # Modal manajemen pengaturan SQLite
 │   └── lib/
 │       ├── db.ts                    # Service SQLite (node:sqlite)
+│       ├── models.ts                # Daftar model & validasi model OpenAI Images
 │       ├── storage.ts               # Helper penyimpanan file upload & disk cleanup
 │       └── swal.ts                  # Wrapper utility SweetAlert2 & toasts
 └── package.json

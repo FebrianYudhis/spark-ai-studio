@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getAppSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
+import { validateImageSize, validateImageQuality } from '@/lib/models';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,12 +9,14 @@ export async function POST(req: NextRequest) {
   const settings = getAppSettings();
   const baseUrl = settings.base_url || 'https://api.openai.com/v1';
   const token = settings.api_token || '';
-  const defaultModel = settings.generations_model || 'dall-e-3';
+  const defaultModel = settings.generations_model || 'gpt-image-2.5';
 
   let body: {
     model?: string;
     prompt?: string;
     size?: string;
+    quality?: string;
+    output_format?: string;
     [key: string]: unknown;
   };
 
@@ -36,8 +39,27 @@ export async function POST(req: NextRequest) {
 
   // Model diambil dari settings SQLite (atau override jika dikirimkan)
   const model = body.model?.trim() || defaultModel;
-  const size = body.size?.trim() || '1024x1024';
+  const size = body.size?.trim() || 'auto';
   const quality = (body.quality as string)?.trim() || 'auto';
+  const outputFormat = (body.output_format as string)?.trim() || 'png';
+
+  // Validasi ukuran gambar sesuai spesifikasi OpenAI Images
+  const sizeValidation = validateImageSize(size);
+  if (!sizeValidation.valid) {
+    return NextResponse.json(
+      { error: sizeValidation.error || 'Ukuran gambar tidak valid' },
+      { status: 400 }
+    );
+  }
+
+  // Validasi kualitas gambar (quality) sesuai model
+  const qualityValidation = validateImageQuality(quality, model);
+  if (!qualityValidation.valid) {
+    return NextResponse.json(
+      { error: qualityValidation.error || 'Kualitas gambar tidak valid' },
+      { status: 400 }
+    );
+  }
 
   const targetUrl = `${baseUrl.replace(/\/+$/, '')}/images/generations`;
 
@@ -47,17 +69,17 @@ export async function POST(req: NextRequest) {
     prompt,
     size,
     quality,
+    output_format: outputFormat,
   };
 
-  // Payload yang dikirimkan ke target API (abaikan quality jika 'auto' agar tidak memicu error invalid parameter)
+  // Payload yang dikirimkan ke target API
   const forwardPayload: Record<string, unknown> = {
     model,
     prompt,
     size,
+    quality,
+    output_format: outputFormat,
   };
-  if (quality && quality !== 'auto') {
-    forwardPayload.quality = quality;
-  }
 
   try {
     const apiResponse = await fetch(targetUrl, {
