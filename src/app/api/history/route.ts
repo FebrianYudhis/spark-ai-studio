@@ -82,21 +82,32 @@ export async function POST(req: NextRequest) {
     }
 
     const prefix = item.type === 'edit' ? 'edit_result' : 'gen';
-    const savedLocalPath = await saveRemoteOrBase64Image(rawImages[0], prefix);
+    const savedResultUrls: string[] = [];
 
-    if (!savedLocalPath) {
+    for (let i = 0; i < rawImages.length; i++) {
+      const imgPrefix = rawImages.length > 1 ? `${prefix}_${i + 1}` : prefix;
+      const cached = await saveRemoteOrBase64Image(rawImages[i], imgPrefix);
+      if (cached) {
+        savedResultUrls.push(cached);
+      }
+    }
+
+    if (savedResultUrls.length === 0) {
       return NextResponse.json({
         error: 'Gagal mengambil gambar. Kemungkinan link eksternal sudah kedaluwarsa atau tidak dapat diakses.'
       }, { status: 502 });
     }
 
+    const finalResultImageUrl = savedResultUrls.length > 1 ? JSON.stringify(savedResultUrls) : savedResultUrls[0];
+
     // Update database record
-    updateApiHitResultImage(Number(id), savedLocalPath);
+    updateApiHitResultImage(Number(id), finalResultImageUrl);
 
     return NextResponse.json({
       success: true,
-      resultImageUrl: savedLocalPath,
-      message: 'Gambar berhasil diambil ulang dan disimpan ke lokal!'
+      resultImageUrl: finalResultImageUrl,
+      resultImageUrls: savedResultUrls,
+      message: `${savedResultUrls.length} gambar berhasil diambil ulang dan disimpan ke lokal!`
     });
   } catch (err: unknown) {
     return NextResponse.json({

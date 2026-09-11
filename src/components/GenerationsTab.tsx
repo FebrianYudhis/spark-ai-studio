@@ -11,6 +11,7 @@ import {
   STANDARD_IMAGE_SIZES,
   validateImageSize,
   SIZE_PRESET_OPTIONS,
+  getPresetIdFromSize,
   scaleImageDimensions,
   ImageQuality,
   getAvailableQualities,
@@ -123,6 +124,7 @@ export default function GenerationsTab({
   const handleScale = (factor: number) => {
     const newSize = scaleImageDimensions(size, factor);
     setSize(newSize);
+    setSizePreset(getPresetIdFromSize(newSize));
   };
 
   const sizeValidation = validateImageSize(size);
@@ -176,10 +178,10 @@ export default function GenerationsTab({
       }
 
       setResult({
-        resultImageUrl: data.imageUrl,
+        resultImageUrl: data.resultImageUrl || data.imageUrl,
         statusCode: res.status,
         requestPayload: data.requestPayload || {},
-        response: data.rawResponse || data,
+        response: data.response || data.rawResponse || data,
         historyId: data.historyId,
       });
 

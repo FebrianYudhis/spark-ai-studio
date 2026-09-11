@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, ExternalLink, Download, FileText, AlertCircle, MessageSquare, Sparkles, Scissors, RefreshCw } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
@@ -27,6 +27,11 @@ export default function DetailModal({
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
   const [localResultImageUrl, setLocalResultImageUrl] = useState<string | null>(null);
+
+  // Reset cache gambar lokal saat item yang dipilih berganti
+  useEffect(() => {
+    setLocalResultImageUrl(null);
+  }, [item?.id]);
 
   if (!item) return null;
 

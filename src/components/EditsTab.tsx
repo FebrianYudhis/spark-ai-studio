@@ -11,6 +11,7 @@ import {
   STANDARD_IMAGE_SIZES,
   validateImageSize,
   SIZE_PRESET_OPTIONS,
+  getPresetIdFromSize,
   scaleImageDimensions,
   ImageQuality,
   getAvailableQualities,
@@ -24,6 +25,7 @@ interface EditsTabProps {
   isConfigured: boolean;
   onSuccess: () => void;
   presetPrompt?: string;
+  presetPromptKey?: number;
   presetPrimaryImageUrl?: string;
   presetPrimaryImageKey?: number;
   presetEditSession?: {
@@ -49,6 +51,7 @@ export default function EditsTab({
   isConfigured,
   onSuccess,
   presetPrompt,
+  presetPromptKey,
   presetPrimaryImageUrl,
   presetPrimaryImageKey,
   presetEditSession,
@@ -114,10 +117,18 @@ export default function EditsTab({
     onLoadingChange?.(loading);
   }, [loading, onLoadingChange]);
 
-  // Sync preset prompt
+  // Sync preset prompt (dari tombol "Gunakan Ulang Prompt" di riwayat)
   useEffect(() => {
-    if (presetPrompt !== undefined) setPrompt(presetPrompt);
-  }, [presetPrompt]);
+    if (presetPrompt !== undefined && presetPrompt !== '') {
+      setError(null);
+      setResult(null);
+      setShowJson(false);
+      setSize('auto');
+      setSizePreset('auto');
+      setQuality('auto');
+      setPrompt(presetPrompt);
+    }
+  }, [presetPrompt, presetPromptKey]);
 
   // Handle Primary Image Change
   const handlePrimaryChange = (file: File | null) => {
@@ -180,7 +191,8 @@ export default function EditsTab({
 
     // 1. Kosongkan seluruh form terlebih dahulu sebelum memasukkan gambar baru
     setPrompt('');
-    setSize('1024x1024');
+    setSize('auto');
+    setSizePreset('auto');
     setQuality('auto');
     setError(null);
     setResult(null);
@@ -235,7 +247,8 @@ export default function EditsTab({
 
     // 1. Kosongkan seluruh form terlebih dahulu
     setPrompt(presetEditSession.prompt || '');
-    setSize('1024x1024');
+    setSize('auto');
+    setSizePreset('auto');
     setQuality('auto');
     setError(null);
     setResult(null);
@@ -317,6 +330,7 @@ export default function EditsTab({
   const handleScale = (factor: number) => {
     const newSize = scaleImageDimensions(size, factor);
     setSize(newSize);
+    setSizePreset(getPresetIdFromSize(newSize));
   };
 
   const sizeValidation = validateImageSize(size);
@@ -995,23 +1009,29 @@ export default function EditsTab({
                 {/* Visual Comparison Grid */}
                 <div className="space-y-3">
                   {/* Source Images Grid */}
-                  <div>
-                    <span className="text-xs text-slate-600 font-semibold uppercase tracking-wider block mb-2">
-                      Gambar Sumber ({result.sourceImageUrls?.length || 1} file)
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                      {(result.sourceImageUrls || [result.requestSummary?.sourceImageUrl as string || '']).map((url, idx) => (
-                        <div key={idx} className="space-y-1">
-                          <div className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center">
-                            <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
-                          </div>
-                          <span className="text-[10px] font-mono text-slate-500 text-center block">
-                            {idx === 0 ? 'primary' : `image ${idx}`}
-                          </span>
+                  {(() => {
+                    const validSources = (result.sourceImageUrls || []).filter(Boolean);
+                    if (validSources.length === 0) return null;
+                    return (
+                      <div>
+                        <span className="text-xs text-slate-600 font-semibold uppercase tracking-wider block mb-2">
+                          Gambar Sumber ({validSources.length} file)
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                          {validSources.map((url, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <div className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center">
+                                <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-500 text-center block">
+                                {idx === 0 ? 'primary' : `image ${idx}`}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Result Images Grid */}
                   <div className="pt-2 border-t border-slate-100">

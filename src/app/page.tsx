@@ -8,6 +8,7 @@ import HistoryTab from '@/components/HistoryTab';
 import SettingsModal from '@/components/SettingsModal';
 
 import { showConfirm } from '@/lib/swal';
+import { isValidModel } from '@/lib/models';
 
 interface AppConfig {
   baseUrl: string;
@@ -151,9 +152,16 @@ export default function Home() {
     }
   };
 
-  const handleSelectPromptFromHistory = (prompt: string, _model: string, type: 'generation' | 'edit') => {
+  const handleSelectPromptFromHistory = (prompt: string, historyModel: string, type: 'generation' | 'edit') => {
     setPresetPrompt(prompt);
     setPresetPromptKey(Date.now());
+    if (historyModel && isValidModel(historyModel)) {
+      if (type === 'generation') {
+        handleGenerationsModelChange(historyModel);
+      } else {
+        handleEditsModelChange(historyModel);
+      }
+    }
     setActiveTab(type);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -217,6 +225,7 @@ export default function Home() {
             isConfigured={Boolean(config?.isConfigured)}
             onSuccess={handleSuccess}
             presetPrompt={presetPrompt}
+            presetPromptKey={presetPromptKey}
             presetPrimaryImageUrl={presetPrimaryImage}
             presetPrimaryImageKey={presetPrimaryImageKey}
             presetEditSession={presetEditSession}

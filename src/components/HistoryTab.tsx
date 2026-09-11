@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { History, Sparkles, Scissors, Trash2, ExternalLink, RefreshCw, Eye, Search, AlertCircle, FileText, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive } from 'lucide-react';
+import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
@@ -210,13 +210,6 @@ export default function HistoryTab({
         `Total kapasitas: ${storageStats.formattedTotalSize} (${storageStats.totalFiles} file). Seluruh file terhubung aktif dengan riwayat Anda dan tidak ada file sampah tersisa.`
       );
     }
-  };
-
-  const formatFileSize = (bytes?: number | null) => {
-    if (!bytes) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   const parseUrls = (val?: string | null): string[] => {
@@ -474,52 +467,56 @@ export default function HistoryTab({
                   <div className="lg:col-span-4 flex items-center justify-center">
                     {isGen ? (
                       /* Generation: Single Image Result */
-                      item.result_image_url ? (
-                        <div className="w-full max-w-[160px] flex flex-col items-center">
-                          <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs">
-                            <img
-                              src={item.result_image_url}
-                              alt="Generated Image"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => setSelectedItem(item)}
-                                className="p-1.5 bg-white/80 hover:bg-white rounded-lg text-slate-800 shadow-sm"
-                                title="Lihat detail"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <a
-                                href={item.result_image_url}
-                                download={`ai_gen_${item.id}.png`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white shadow-sm"
-                                title="Unduh"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
+                      (() => {
+                        const genResultUrls = parseUrls(item.result_image_url);
+                        const genImgUrl = genResultUrls[0];
+                        return genImgUrl ? (
+                          <div className="w-full max-w-[160px] flex flex-col items-center">
+                            <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs">
+                              <img
+                                src={genImgUrl}
+                                alt="Generated Image"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => setSelectedItem(item)}
+                                  className="p-1.5 bg-white/80 hover:bg-white rounded-lg text-slate-800 shadow-sm"
+                                  title="Lihat detail"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <a
+                                  href={genImgUrl}
+                                  download={`ai_gen_${item.id}.png`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white shadow-sm"
+                                  title="Unduh"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
+                              </div>
                             </div>
+                            <span className="text-[11px] text-slate-500 mt-1.5 font-medium">Hasil Generation</span>
                           </div>
-                          <span className="text-[11px] text-slate-500 mt-1.5 font-medium">Hasil Generation</span>
-                        </div>
-                      ) : (
-                        <div className="w-full aspect-square max-w-[160px] rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-500 p-2.5 text-center space-y-1.5 shadow-2xs">
-                          <ImageIcon className="w-5 h-5 text-slate-400" />
-                          <span className="text-[10px] font-medium text-slate-500">Tidak ada gambar</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRedownload(item.id)}
-                            disabled={redownloadingId === item.id}
-                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
-                            title="Ambil ulang gambar dari response payload API"
-                          >
-                            <RefreshCw className={`w-3 h-3 ${redownloadingId === item.id ? 'animate-spin' : ''}`} />
-                            {redownloadingId === item.id ? 'Mengambil...' : 'Ambil Ulang Gambar'}
-                          </button>
-                        </div>
-                      )
+                        ) : (
+                          <div className="w-full aspect-square max-w-[160px] rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-500 p-2.5 text-center space-y-1.5 shadow-2xs">
+                            <ImageIcon className="w-5 h-5 text-slate-400" />
+                            <span className="text-[10px] font-medium text-slate-500">Tidak ada gambar</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRedownload(item.id)}
+                              disabled={redownloadingId === item.id}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Ambil ulang gambar dari response payload API"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${redownloadingId === item.id ? 'animate-spin' : ''}`} />
+                              {redownloadingId === item.id ? 'Mengambil...' : 'Ambil Ulang Gambar'}
+                            </button>
+                          </div>
+                        );
+                      })()
                     ) : (
                       /* Edit: Side-by-side Source vs Result */
                       (() => {

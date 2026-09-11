@@ -89,6 +89,7 @@ export function scaleImageDimensions(sizeStr: string, factor: number): string {
   const MAX_LONG_EDGE = 3840;
   const MAX_SHORT_EDGE = 2160;
   const MAX_TOTAL_PIXELS = 3840 * 2160;
+  const MIN_EDGE = 256;
 
   // Batasi sisi terpanjang dan terpendek
   const maxDim = Math.max(targetW, targetH);
@@ -108,9 +109,19 @@ export function scaleImageDimensions(sizeStr: string, factor: number): string {
   targetW *= scaleDown;
   targetH *= scaleDown;
 
-  // Bulatkan ke kelipatan 16 terdekat (minimal 16)
-  let w = Math.max(16, Math.round(targetW / 16) * 16);
-  let h = Math.max(16, Math.round(targetH / 16) * 16);
+  // Jika diperkecil (:2), jangan sampai sisi terpendek lebih kecil dari batas wajar MIN_EDGE (256px)
+  if (factor < 1) {
+    const currentMinDim = Math.min(targetW, targetH);
+    if (currentMinDim < MIN_EDGE) {
+      const scaleUp = MIN_EDGE / currentMinDim;
+      targetW *= scaleUp;
+      targetH *= scaleUp;
+    }
+  }
+
+  // Bulatkan ke kelipatan 16 terdekat (minimal kelipatan 16 di atas atau sama dengan MIN_EDGE)
+  let w = Math.round(targetW / 16) * 16;
+  let h = Math.round(targetH / 16) * 16;
 
   // Pastikan setelah pembulatan tidak ada sisi yang melanggar batas
   if (Math.max(w, h) > MAX_LONG_EDGE) {
