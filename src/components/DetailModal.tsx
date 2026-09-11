@@ -202,6 +202,13 @@ export default function DetailModal({
                 <p className="text-sm text-slate-800 mt-1 font-mono font-medium">{String(parsedPayload?.quality)}</p>
               </div>
             )}
+
+            {Boolean(parsedPayload?.input_fidelity) && (
+              <div>
+                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Input Fidelity</p>
+                <p className="text-sm text-slate-800 mt-1 font-mono font-medium">{String(parsedPayload?.input_fidelity)}</p>
+              </div>
+            )}
           </div>
 
           {/* Images Section (Card Gambar) */}

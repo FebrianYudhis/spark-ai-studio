@@ -324,3 +324,29 @@ export function formatSafeDate(dateStr?: string | null): string {
   }
 }
 
+export type InputFidelity = 'auto' | 'high' | 'low';
+
+export const INPUT_FIDELITY_OPTIONS: { label: string; value: InputFidelity; description: string }[] = [
+  { label: 'auto (Bawaan API / Default)', value: 'auto', description: 'Gunakan pengaturan bawaan dari model OpenAI' },
+  { label: 'high (Presisi Tinggi)', value: 'high', description: 'Pertahankan detail asli gambar input secara ketat' },
+  { label: 'low (Fleksibel / Kreatif)', value: 'low', description: 'Model lebih bebas berimprovisasi dengan panduan umum gambar' },
+];
+
+export function validateInputFidelity(fidelityStr?: string | null): {
+  valid: boolean;
+  value?: 'high' | 'low';
+  error?: string;
+} {
+  if (!fidelityStr || fidelityStr.trim() === '' || fidelityStr.trim().toLowerCase() === 'auto') {
+    return { valid: true, value: undefined };
+  }
+  const f = fidelityStr.trim().toLowerCase();
+  if (f === 'high' || f === 'low') {
+    return { valid: true, value: f };
+  }
+  return {
+    valid: false,
+    error: `Nilai input_fidelity "${fidelityStr}" tidak valid. Pilihan yang didukung: auto, high, low.`,
+  };
+}
+

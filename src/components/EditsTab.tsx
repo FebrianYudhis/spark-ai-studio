@@ -17,6 +17,8 @@ import {
   getAvailableQualities,
   validateImageQuality,
   modelSupportsUltraQuality,
+  InputFidelity,
+  INPUT_FIDELITY_OPTIONS,
 } from '@/lib/models';
 
 interface EditsTabProps {
@@ -89,6 +91,9 @@ export default function EditsTab({
   // Opsi quality (default: 'auto')
   const [quality, setQuality] = useState<ImageQuality>('auto');
 
+  // Opsi input_fidelity (default: 'auto')
+  const [inputFidelity, setInputFidelity] = useState<InputFidelity>('auto');
+
   // Fallback quality jika model saat ini tidak mendukung xhigh/max
   useEffect(() => {
     if (!modelSupportsUltraQuality(model) && (quality === 'xhigh' || quality === 'max')) {
@@ -126,6 +131,7 @@ export default function EditsTab({
       setSize('auto');
       setSizePreset('auto');
       setQuality('auto');
+      setInputFidelity('auto');
       setPrompt(presetPrompt);
     }
   }, [presetPrompt, presetPromptKey]);
@@ -212,6 +218,7 @@ export default function EditsTab({
     setSize('auto');
     setSizePreset('auto');
     setQuality('auto');
+    setInputFidelity('auto');
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -268,6 +275,7 @@ export default function EditsTab({
     setSize('auto');
     setSizePreset('auto');
     setQuality('auto');
+    setInputFidelity('auto');
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -362,6 +370,7 @@ export default function EditsTab({
     clearPrimaryImage();
     clearAllAdditionalImages();
     setQuality('auto');
+    setInputFidelity('auto');
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -410,6 +419,9 @@ export default function EditsTab({
       formData.append('size', size.trim());
       formData.append('quality', quality);
       formData.append('output_format', 'png');
+      if (inputFidelity !== 'auto') {
+        formData.append('input_fidelity', inputFidelity);
+      }
 
       // 1. Primary Image dikirimkan terpisah agar backend bisa menandai sebagai "primary"
       formData.append('primaryImage', primaryImage.file, primaryImage.file.name);
@@ -938,6 +950,33 @@ export default function EditsTab({
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
                   >
                     {availableQualities.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Input Fidelity Configuration */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-0.5">
+                    Input Fidelity (Kesetiaan Gambar)
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Mengontrol seberapa ketat model mempertahankan detail asli gambar input
+                  </span>
+                </div>
+                <div className="w-full sm:w-72">
+                  <select
+                    value={inputFidelity}
+                    onChange={(e) => setInputFidelity(e.target.value as InputFidelity)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
+                  >
+                    {INPUT_FIDELITY_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>

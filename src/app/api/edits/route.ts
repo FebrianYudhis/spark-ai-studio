@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getAppSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
-import { validateImageSize, validateImageQuality } from '@/lib/models';
+import { validateImageSize, validateImageQuality, validateInputFidelity } from '@/lib/models';
 import path from 'node:path';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
   const size = (formData.get('size') as string)?.trim() || 'auto';
   const quality = (formData.get('quality') as string)?.trim() || 'auto';
   const outputFormat = (formData.get('output_format') as string)?.trim() || 'png';
+  const rawFidelity = (formData.get('input_fidelity') as string)?.trim() || (formData.get('inputFidelity') as string)?.trim() || 'auto';
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400 });
@@ -50,6 +51,16 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Validasi input_fidelity (auto, high, low)
+  const fidelityValidation = validateInputFidelity(rawFidelity);
+  if (!fidelityValidation.valid) {
+    return NextResponse.json(
+      { error: fidelityValidation.error || 'Nilai input_fidelity tidak valid' },
+      { status: 400 }
+    );
+  }
+  const inputFidelity = fidelityValidation.value;
 
   // 1. Ambil file Primary Image
   let primaryFile = formData.get('primaryImage') as File | null;
@@ -121,6 +132,7 @@ export async function POST(req: NextRequest) {
     size,
     quality,
     output_format: outputFormat,
+    ...(inputFidelity ? { input_fidelity: inputFidelity } : {}),
   };
 
   try {
@@ -135,6 +147,7 @@ export async function POST(req: NextRequest) {
       size,
       quality,
       output_format: outputFormat,
+      ...(inputFidelity ? { input_fidelity: inputFidelity } : {}),
     };
 
     const apiResponse = await fetch(targetUrl, {
