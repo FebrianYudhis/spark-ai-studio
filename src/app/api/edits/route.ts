@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const size = (formData.get('size') as string)?.trim() || 'auto';
   const quality = (formData.get('quality') as string)?.trim() || 'auto';
   const outputFormat = (formData.get('output_format') as string)?.trim() || 'png';
-  const rawFidelity = (formData.get('input_fidelity') as string)?.trim() || (formData.get('inputFidelity') as string)?.trim() || 'auto';
+  const rawFidelity = (formData.get('input_fidelity') as string)?.trim() || (formData.get('inputFidelity') as string)?.trim() || 'high';
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400 });
@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
   }
   const inputFidelity = fidelityValidation.value;
 
-  // 1. Ambil file Primary Image
-  let primaryFile = formData.get('primaryImage') as File | null;
+  // 1. Ambil file Image 1 (Gambar Dasar)
+  let primaryFile = (formData.get('image1') || formData.get('primaryImage')) as File | null;
   
-  // 2. Ambil file Additional Images
+  // 2. Ambil file Additional Images (Image 2, 3, dst.)
   let additionalFiles = formData.getAll('additionalImages').filter((f): f is File => f instanceof Blob && f.size > 0);
 
   // Fallback jika dikirimkan melalui field 'image' biasa
@@ -83,15 +83,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (!primaryFile || !(primaryFile instanceof Blob) || primaryFile.size === 0) {
-    return NextResponse.json({ error: 'File gambar dasar (primary) wajib diunggah' }, { status: 400 });
+    return NextResponse.json({ error: 'File gambar dasar (image 1) wajib diunggah' }, { status: 400 });
   }
 
   const targetUrl = `${baseUrl.replace(/\/+$/, '')}/images/edits`;
 
   // Simpan file ke disk lokal untuk preview riwayat
-  const savedPrimary = await saveUploadedFile(primaryFile, 'primary');
+  const savedPrimary = await saveUploadedFile(primaryFile, 'image_1');
   const savedAdditionals = await Promise.all(
-    additionalFiles.map((file, idx) => saveUploadedFile(file, `additional_${idx + 1}`))
+    additionalFiles.map((file, idx) => saveUploadedFile(file, `additional_${idx + 2}`))
   );
 
   const allSavedSources = [savedPrimary, ...savedAdditionals];
@@ -99,9 +99,9 @@ export async function POST(req: NextRequest) {
 
   // Format penamaan file:
   const getExt = (filename: string) => path.extname(filename) || '.png';
-  const primarySentName = `primary${getExt(savedPrimary.filename)}`;
+  const primarySentName = `image 1${getExt(savedPrimary.filename)}`;
   const additionalSentNames = savedAdditionals.map((s, idx) =>
-    `image ${idx + 1}${getExt(s.filename)}`
+    `image ${idx + 2}${getExt(s.filename)}`
   );
 
   // Konversi buffer gambar lokal ke Data URL Base64
@@ -187,8 +187,8 @@ export async function POST(req: NextRequest) {
     const primaryResultImageUrl = savedResultUrls.length > 0 ? savedResultUrls[0] : undefined;
 
     // Nama-nama sumber gabungan untuk disimpan di kolom tabel
-    const sourceNamesSummary = `[primary: ${savedPrimary.filename}]` +
-      (savedAdditionals.length > 0 ? `, tambahan: ${savedAdditionals.map((s, idx) => `[image ${idx + 1}: ${s.filename}]`).join(', ')}` : '');
+    const sourceNamesSummary = `[image 1: ${savedPrimary.filename}]` +
+      (savedAdditionals.length > 0 ? `, tambahan: ${savedAdditionals.map((s, idx) => `[image ${idx + 2}: ${s.filename}]`).join(', ')}` : '');
 
     // Simpan ke database SQLite
     const historyId = saveApiHit({
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
       endpoint: targetUrl,
       model,
       prompt,
-      source_image_name: `[primary: ${savedPrimary.filename}]`,
+      source_image_name: `[image 1: ${savedPrimary.filename}]`,
       source_image_size: totalSize,
       source_image_url: JSON.stringify(allSavedSources.map((s) => s.url)),
       request_payload: requestSummary,

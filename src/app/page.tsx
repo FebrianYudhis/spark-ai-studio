@@ -8,7 +8,7 @@ import HistoryTab from '@/components/HistoryTab';
 import SettingsModal from '@/components/SettingsModal';
 
 import { showConfirm } from '@/lib/swal';
-import { isValidModel } from '@/lib/models';
+import { isValidModel, type EditSessionData, type AvailableModel } from '@/lib/models';
 
 interface AppConfig {
   baseUrl: string;
@@ -37,12 +37,7 @@ export default function Home() {
   const [presetPromptKey, setPresetPromptKey] = useState<number>(0);
   const [presetPrimaryImage, setPresetPrimaryImage] = useState<string>('');
   const [presetPrimaryImageKey, setPresetPrimaryImageKey] = useState<number>(0);
-  const [presetEditSession, setPresetEditSession] = useState<{
-    prompt: string;
-    primaryUrl: string;
-    additionalUrls: string[];
-    key: number;
-  } | null>(null);
+  const [presetEditSession, setPresetEditSession] = useState<(EditSessionData & { key: number }) | null>(null);
 
   // 1. Prevent accidental window unload / tab close when processing
   useEffect(() => {
@@ -166,13 +161,14 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleReuseEditSession = (prompt: string, primaryUrl: string, additionalUrls: string[]) => {
+  const handleReuseEditSession = (session: EditSessionData) => {
     setPresetEditSession({
-      prompt,
-      primaryUrl,
-      additionalUrls,
+      ...session,
       key: Date.now(),
     });
+    if (session.model && isValidModel(session.model)) {
+      handleEditsModelChange(session.model as AvailableModel);
+    }
     setActiveTab('edit');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

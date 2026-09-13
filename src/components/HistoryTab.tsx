@@ -5,7 +5,7 @@ import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircl
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
-import { formatSafeDate } from '@/lib/models';
+import { formatSafeDate, type EditSessionData } from '@/lib/models';
 
 interface StorageStatsInfo {
   totalFiles: number;
@@ -21,7 +21,7 @@ interface StorageStatsInfo {
 
 interface HistoryTabProps {
   onSelectPrompt: (prompt: string, model: string, type: 'generation' | 'edit') => void;
-  onReuseEditSession?: (prompt: string, primaryUrl: string, additionalUrls: string[]) => void;
+  onReuseEditSession?: (session: EditSessionData) => void;
   onUseAsEditBase?: (imageUrl?: string) => void;
   refreshTrigger: number;
   onUpdateHistory?: () => void;
@@ -664,12 +664,24 @@ export default function HistoryTab({
                     <button
                       onClick={() => {
                         const sourceUrls = parseUrls(item.source_image_url);
-                        onReuseEditSession(item.prompt, sourceUrls[0] || '', sourceUrls.slice(1));
+                        let parsedReq: Record<string, unknown> | null = null;
+                        try {
+                          if (item.request_payload) parsedReq = JSON.parse(item.request_payload);
+                        } catch {}
+                        onReuseEditSession({
+                          prompt: item.prompt,
+                          primaryUrl: sourceUrls[0] || '',
+                          additionalUrls: sourceUrls.slice(1),
+                          model: item.model,
+                          size: item.size || (parsedReq?.size as string | undefined),
+                          quality: parsedReq?.quality as any,
+                          inputFidelity: parsedReq?.input_fidelity as any,
+                        });
                       }}
                       className="px-3.5 py-2 sm:py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl sm:rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                      Gunakan Ulang Prompt dan Gambar
+                      Ulangi Proses
                     </button>
                   ) : (
                     <span />
@@ -809,8 +821,8 @@ export default function HistoryTab({
           onSelectPrompt(p, m, t);
           setSelectedItem(null);
         }}
-        onReuseEditSession={(p, prim, adds) => {
-          if (onReuseEditSession) onReuseEditSession(p, prim, adds);
+        onReuseEditSession={(session) => {
+          if (onReuseEditSession) onReuseEditSession(session);
           setSelectedItem(null);
         }}
         onUseAsEditBase={(img) => {

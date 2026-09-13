@@ -18,6 +18,7 @@ import {
   modelSupportsUltraQuality,
   InputFidelity,
   INPUT_FIDELITY_OPTIONS,
+  type EditSessionData,
 } from '@/lib/models';
 
 interface EditsTabProps {
@@ -29,12 +30,7 @@ interface EditsTabProps {
   presetPromptKey?: number;
   presetPrimaryImageUrl?: string;
   presetPrimaryImageKey?: number;
-  presetEditSession?: {
-    prompt: string;
-    primaryUrl: string;
-    additionalUrls: string[];
-    key: number;
-  } | null;
+  presetEditSession?: (EditSessionData & { key: number }) | null;
   onLoadingChange?: (loading: boolean) => void;
   onOpenSettings?: () => void;
   onModelChange?: (model: AvailableModel) => void;
@@ -90,8 +86,8 @@ export default function EditsTab({
   // Opsi quality (default: 'auto')
   const [quality, setQuality] = useState<ImageQuality>('auto');
 
-  // Opsi input_fidelity (default: 'auto')
-  const [inputFidelity, setInputFidelity] = useState<InputFidelity>('auto');
+  // Opsi input_fidelity (default: 'high')
+  const [inputFidelity, setInputFidelity] = useState<InputFidelity>('high');
 
   // Fallback quality jika model saat ini tidak mendukung xhigh/max
   useEffect(() => {
@@ -248,7 +244,7 @@ export default function EditsTab({
     setSize('auto');
     setSizePreset('auto');
     setQuality('auto');
-    setInputFidelity('auto');
+    setInputFidelity('high');
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -289,23 +285,40 @@ export default function EditsTab({
   const getCleanFilename = (url: string, fallback: string) => {
     try {
       const raw = url.split('/').pop() || fallback;
-      const cleaned = raw.replace(/^(primary|additional_\d+)_\d+_/, '');
+      const cleaned = raw.replace(/^(primary|image_1|image1|additional_\d+)_\d+_/, '');
       return cleaned || raw;
     } catch {
       return fallback;
     }
   };
 
-  // Sync preset edit session (dari tombol "Gunakan Ulang Prompt dan Gambar" di riwayat)
+  // Sync preset edit session (dari tombol "Ulangi Proses" di riwayat)
   useEffect(() => {
     if (!presetEditSession) return;
 
-    // 1. Kosongkan seluruh form terlebih dahulu
+    // 1. Pulihkan konfigurasi atau kosongkan form
     setPrompt(presetEditSession.prompt || '');
-    setSize('auto');
-    setSizePreset('auto');
-    setQuality('auto');
-    setInputFidelity('auto');
+    if (presetEditSession.size) {
+      setSize(presetEditSession.size);
+      setSizePreset(getPresetIdFromSize(presetEditSession.size));
+    } else {
+      setSize('auto');
+      setSizePreset('auto');
+    }
+    if (presetEditSession.quality) {
+      setQuality(presetEditSession.quality);
+    } else {
+      setQuality('auto');
+    }
+    if (presetEditSession.inputFidelity) {
+      setInputFidelity(presetEditSession.inputFidelity);
+    } else {
+      setInputFidelity('high');
+    }
+    if (presetEditSession.model && isValidModel(presetEditSession.model)) {
+      setModel(presetEditSession.model as AvailableModel);
+      onModelChange?.(presetEditSession.model as AvailableModel);
+    }
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -349,7 +362,7 @@ export default function EditsTab({
               if (res.ok) {
                 const blob = await res.blob();
                 const ext = blob.type.split('/')[1] || 'png';
-                const cleanName = getCleanFilename(url, `image_${i + 1}_${Date.now()}.${ext}`);
+                const cleanName = getCleanFilename(url, `image_${i + 2}_${Date.now()}.${ext}`);
                 const file = new File([blob], cleanName, { type: blob.type || 'image/png' });
                 loadedAdditionals.push({
                   id: `add_${cleanName}_${Date.now()}_${i}`,
@@ -358,7 +371,7 @@ export default function EditsTab({
                 });
               }
             } catch (e) {
-              console.error(`Failed to load additional image ${i + 1}:`, e);
+              console.error(`Failed to load additional image ${i + 2}:`, e);
             }
           }
 
@@ -368,7 +381,7 @@ export default function EditsTab({
         }
 
         if (isMounted) {
-          showToast('Sesi edit (prompt & seluruh gambar) berhasil dimuat', 'success');
+          showToast('Sesi edit (prompt, gambar, dan seluruh parameter) berhasil dimuat', 'success');
         }
       } catch (err) {
         console.error('Error loading preset edit session:', err);
@@ -400,7 +413,7 @@ export default function EditsTab({
     clearPrimaryImage();
     clearAllAdditionalImages();
     setQuality('auto');
-    setInputFidelity('auto');
+    setInputFidelity('high');
     setError(null);
     setResult(null);
     setShowJson(false);
@@ -449,14 +462,15 @@ export default function EditsTab({
       formData.append('size', size.trim());
       formData.append('quality', quality);
       formData.append('output_format', 'png');
-      if (inputFidelity !== 'auto') {
+      if (inputFidelity) {
         formData.append('input_fidelity', inputFidelity);
       }
 
-      // 1. Primary Image dikirimkan terpisah agar backend bisa menandai sebagai "primary"
+      // 1. Image 1 (Gambar Dasar) dikirimkan terpisah
+      formData.append('image1', primaryImage.file, primaryImage.file.name);
       formData.append('primaryImage', primaryImage.file, primaryImage.file.name);
 
-      // 2. Additional Images dikirimkan secara berurutan agar backend menandai "image 1", "image 2", dst.
+      // 2. Additional Images dikirimkan secara berurutan untuk image 2, image 3, dst.
       additionalImages.forEach((item) => {
         formData.append('additionalImages', item.file, item.file.name);
       });
@@ -570,7 +584,7 @@ export default function EditsTab({
               </div>
             </div>
 
-            {/* SEKSI 1: IMAGE DASAR (PRIMARY) */}
+            {/* SEKSI 1: IMAGE DASAR (IMAGE 1) */}
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -579,10 +593,10 @@ export default function EditsTab({
                   </span>
                   <div>
                     <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                      Image Dasar (Primary)
+                      Image Dasar (Image 1)
                     </label>
                     <span className="text-[11px] text-slate-500">
-                      Dikirimkan ke field <code className="font-mono text-emerald-700 font-semibold">image</code> dengan nama: <strong className="font-mono text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded">primary</strong>
+                      Dikirimkan ke field <code className="font-mono text-emerald-700 font-semibold">image</code> dengan nama: <strong className="font-mono text-emerald-800 bg-emerald-100/70 px-1 py-0.5 rounded">image 1</strong>
                     </span>
                   </div>
                 </div>
@@ -632,7 +646,7 @@ export default function EditsTab({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        primary
+                        image 1
                       </span>
                       <span className="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Terpilih
@@ -667,7 +681,7 @@ export default function EditsTab({
                       Image Tambahan ({additionalImages.length} gambar)
                     </label>
                     <span className="text-[11px] text-slate-500">
-                      Dikirimkan ke field <code className="font-mono text-indigo-700 font-semibold">image</code> urut: <strong className="font-mono text-indigo-800 bg-indigo-100/70 px-1 py-0.5 rounded">image 1</strong>, <strong className="font-mono text-indigo-800 bg-indigo-100/70 px-1 py-0.5 rounded">image 2</strong>, dst.
+                      Dikirimkan ke field <code className="font-mono text-indigo-700 font-semibold">image</code> urut: <strong className="font-mono text-indigo-800 bg-indigo-100/70 px-1 py-0.5 rounded">image 2</strong>, <strong className="font-mono text-indigo-800 bg-indigo-100/70 px-1 py-0.5 rounded">image 3</strong>, dst.
                     </span>
                   </div>
                 </div>
@@ -727,13 +741,13 @@ export default function EditsTab({
                         <div className="w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
                           <img
                             src={img.previewUrl}
-                            alt={`Preview image ${idx + 1}`}
+                            alt={`Preview image ${idx + 2}`}
                             className="max-h-full max-w-full object-cover"
                           />
                         </div>
                         <div className="flex-1 min-w-0 pr-4">
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            image {idx + 1}
+                            image {idx + 2}
                           </span>
                           <p className="text-[11px] font-medium text-slate-800 truncate mt-0.5" title={img.file.name}>
                             {img.file.name}
@@ -790,7 +804,7 @@ export default function EditsTab({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={3}
-                placeholder="misal: Ambil objek dari image 1 dan letakkan di atas primary dengan gaya latar dari image 2..."
+                placeholder="misal: Ambil objek dari image 2 dan letakkan di atas image 1 dengan gaya latar dari image 3..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-all resize-y leading-relaxed"
                 required
               />
@@ -1104,7 +1118,7 @@ export default function EditsTab({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Memproses Edit Gambar...</p>
-                  <p className="text-xs text-slate-500 mt-1">Mengunggah primary + {additionalImages.length} tambahan dan menjalankan AI model</p>
+                  <p className="text-xs text-slate-500 mt-1">Mengunggah image 1 + {additionalImages.length} tambahan dan menjalankan AI model</p>
                 </div>
               </div>
             ) : error ? (
@@ -1133,8 +1147,8 @@ export default function EditsTab({
                               <div className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center">
                                 <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
                               </div>
-                              <span className="text-[10px] font-mono text-slate-500 text-center block">
-                                {idx === 0 ? 'primary' : `image ${idx}`}
+                              <span className="text-[10px] font-mono text-slate-500 text-center block font-semibold">
+                                image {idx + 1}
                               </span>
                             </div>
                           ))}

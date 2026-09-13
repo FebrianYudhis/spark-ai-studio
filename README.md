@@ -96,8 +96,8 @@ Aplikasi web modern untuk mengelola, mengeksekusi, dan mencatat riwayat request 
     - Menampilkan kotak **Peringatan & Aturan Resolusi OpenAI Images** secara khusus pada mode kustom (keduanya wajib kelipatan 16, rentang aspect ratio 1:3 hingga 3:1, batas maksimum 3840x2160, dan peringatan eksperimental >2560x1440).
     - Status validasi real-time langsung memverifikasi kepatuhan aturan sebelum request dikirimkan.
 - **Arsitektur Multi-Layer Gambar**:
-  - **Layer 1: Image Dasar (Primary)**: Gambar utama yang menjadi acuan edit.
-  - **Layer 2: Image Tambahan (Additional)**: Multi-upload gambar referensi tambahan opsional (`image 1`, `image 2`, dst.).
+  - **Layer 1: Image Dasar (Image 1)**: Gambar utama yang menjadi acuan edit.
+  - **Layer 2: Image Tambahan (Additional)**: Multi-upload gambar referensi tambahan opsional (`image 2`, `image 3`, dst.).
 - **Pilihan Kualitas Output (`quality`)**:
   - `auto` (default): Memilih kualitas terbaik secara otomatis sesuai model yang digunakan.
   - `low`, `medium`, `high`: Didukung pada seluruh model GPT Image (`gpt-image-2`, `gpt-image-2.5`).

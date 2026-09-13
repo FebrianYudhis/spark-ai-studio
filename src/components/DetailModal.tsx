@@ -4,14 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, ExternalLink, Download, FileText, AlertCircle, MessageSquare, Sparkles, Scissors, RefreshCw } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
-import { formatSafeDate } from '@/lib/models';
+import { formatSafeDate, type EditSessionData } from '@/lib/models';
 
 interface DetailModalProps {
   item: ApiHitRecord | null;
   onClose: () => void;
   onItemUpdated?: (updatedItem: ApiHitRecord) => void;
   onReusePrompt?: (prompt: string, model: string, type: 'generation' | 'edit') => void;
-  onReuseEditSession?: (prompt: string, primaryUrl: string, additionalUrls: string[]) => void;
+  onReuseEditSession?: (session: EditSessionData) => void;
   onUseAsEditBase?: (imageUrl?: string) => void;
 }
 
@@ -225,8 +225,13 @@ export default function DetailModal({
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {sourceUrls.map((url, idx) => (
-                    <div key={idx} className="relative aspect-square bg-white rounded-lg overflow-hidden border border-slate-200 shadow-2xs flex items-center justify-center">
-                      <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
+                    <div key={idx} className="space-y-1">
+                      <div className="relative aspect-square bg-white rounded-lg overflow-hidden border border-slate-200 shadow-2xs flex items-center justify-center">
+                        <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500 text-center block font-semibold">
+                        image {idx + 1}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -329,12 +334,20 @@ export default function DetailModal({
                 {onReuseEditSession && item.type === 'edit' && (
                   <button
                     onClick={() => {
-                      onReuseEditSession(item.prompt, sourceUrls[0] || '', sourceUrls.slice(1));
+                      onReuseEditSession({
+                        prompt: item.prompt,
+                        primaryUrl: sourceUrls[0] || '',
+                        additionalUrls: sourceUrls.slice(1),
+                        model: item.model,
+                        size: item.size || (parsedPayload?.size as string | undefined),
+                        quality: parsedPayload?.quality as any,
+                        inputFidelity: parsedPayload?.input_fidelity as any,
+                      });
                     }}
                     className="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-md font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <Sparkles className="w-3 h-3 text-purple-600" />
-                    Gunakan Ulang Prompt dan Gambar
+                    Ulangi Proses
                   </button>
                 )}
                 {onUseAsEditBase && (

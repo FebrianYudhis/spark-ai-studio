@@ -326,8 +326,8 @@ export function formatSafeDate(dateStr?: string | null): string {
 export type InputFidelity = 'auto' | 'high' | 'low';
 
 export const INPUT_FIDELITY_OPTIONS: { label: string; value: InputFidelity; description: string }[] = [
-  { label: 'auto (Bawaan API / Default)', value: 'auto', description: 'Gunakan pengaturan bawaan dari model OpenAI' },
-  { label: 'high (Presisi Tinggi)', value: 'high', description: 'Pertahankan detail asli gambar input secara ketat' },
+  { label: 'high (Default - Presisi Tinggi)', value: 'high', description: 'Pertahankan detail asli gambar input secara ketat' },
+  { label: 'auto (Bawaan API)', value: 'auto', description: 'Gunakan pengaturan bawaan dari model OpenAI' },
   { label: 'low (Fleksibel / Kreatif)', value: 'low', description: 'Model lebih bebas berimprovisasi dengan panduan umum gambar' },
 ];
 
@@ -356,11 +356,21 @@ ATURAN UTAMA:
 - Pertahankan maksud asli prompt: Jangan mengubah konsep, tujuan, objek utama, atau instruksi penting dari pengguna.
 - Kembangkan detail yang tersirat: Jika prompt terlalu pendek, tambahkan detail yang secara logis diperlukan agar AI image generator lebih mudah memahami instruksi, seperti: komposisi, pose dan posisi subjek, perspektif, framing/kamera, pencahayaan, bayangan, warna dan tone, lingkungan/latar belakang, pakaian dan aksesori, tekstur dan material, anatomi, proporsi, integrasi antar elemen, konsistensi visual, tingkat realism, dan detail yang perlu dipertahankan dari gambar referensi.
 - Jangan menambahkan elemen kreatif yang tidak diperlukan: Jangan tiba-tiba menambahkan objek, pakaian, latar, gaya seni, ekspresi, atau konsep baru jika pengguna tidak menginginkannya.
-- Prioritaskan referensi gambar: Jika pengguna menyebut Gambar 1, Gambar 2, dan seterusnya, jelaskan dengan tegas fungsi masing-masing gambar (contoh: Gambar 1 = referensi utama untuk pose, komposisi, pakaian, pencahayaan, dan latar; Gambar 2 = referensi wajah/identitas). Jangan mencampurkan fungsi referensi kecuali pengguna memang memintanya.
+- Prioritaskan referensi gambar: Kenali sebutan "image 1" (atau "Gambar 1 / foto 1") sebagai gambar acuan dasar utama (komposisi, pose, pencahayaan, latar). Kenali sebutan "image 2", "image 3", dan seterusnya sebagai gambar referensi tambahan / donor (misal: referensi wajah, objek spesifik, pakaian, atau gaya). Jelaskan dengan tegas dan terstruktur fungsi masing-masing nomor gambar (contoh: "Pertahankan latar dan pencahayaan dari image 1, lalu integrasikan wajah dari image 2..."). Jangan pernah menukar atau mencampurkan peran gambar kecuali secara eksplisit diminta oleh pengguna.
 - Untuk image editing atau face swap, tekankan integrasi yang natural: Pastikan elemen yang digabungkan mengikuti bentuk dan sudut kepala, perspektif, pose, proporsi, warna kulit, pencahayaan, arah cahaya, bayangan, depth of field, ketajaman, tone warna, tekstur kulit, dan anatomi wajah. Tujuannya agar hasil akhir terlihat sebagai satu gambar yang kohesif, bukan seperti elemen yang ditempelkan.
 - Pertahankan identitas wajah jika pengguna menggunakan referensi wajah: Jangan mengubah karakteristik wajah secara berlebihan. Pertahankan fitur utama seperti bentuk wajah, mata, hidung, bibir, rahang, dan karakteristik visual lainnya sejauh memungkinkan.
 - Gunakan bahasa yang konkret dan instruksional: Hindari kalimat yang terlalu umum seperti "buat sebagus mungkin". Lebih baik gunakan instruksi yang menjelaskan apa yang harus dipertahankan dan bagaimana elemen harus menyatu.
 - Jangan memberikan penjelasan panjang tentang prosesmu: Output utama harus berupa prompt final yang siap copy-paste tanpa penjelasan pembuka atau penutup.
 - Jangan menggunakan negative prompt kecuali memang diperlukan: Jika diperlukan, letakkan di bagian terpisah bernama Negative Prompt.
 - Jika prompt pengguna sudah cukup detail, jangan mengubahnya secara berlebihan: Cukup rapikan struktur, hilangkan ambiguitas, dan tambahkan detail yang benar-benar membantu.`;
+
+export interface EditSessionData {
+  prompt: string;
+  primaryUrl: string;
+  additionalUrls: string[];
+  model?: string;
+  size?: string;
+  quality?: ImageQuality;
+  inputFidelity?: InputFidelity;
+}
 

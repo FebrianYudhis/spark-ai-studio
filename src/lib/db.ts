@@ -101,6 +101,24 @@ function initSchema(db: DatabaseSync) {
     } catch {}
   }
 
+  // Migrasi otomatis: sesuaikan format ringkasan nama gambar pada data riwayat lama ke format baru [image 1: ...]
+  try {
+    const legacyRows = db.prepare(`SELECT id, source_image_name FROM api_hits WHERE source_image_name LIKE '%[primary:%'`).all() as Array<{ id: number; source_image_name: string }>;
+    for (const row of legacyRows) {
+      if (!row.source_image_name) continue;
+      let updated = row.source_image_name;
+      if (updated.includes('tambahan:')) {
+        const parts = updated.split('tambahan:');
+        const primaryPart = parts[0].replace(/\[primary:\s*/g, '[image 1: ');
+        const additionalPart = parts[1].replace(/\[image\s+(\d+):/g, (_, n) => `[image ${Number(n) + 1}:`);
+        updated = `${primaryPart}tambahan:${additionalPart}`;
+      } else {
+        updated = updated.replace(/\[primary:\s*/g, '[image 1: ');
+      }
+      db.prepare(`UPDATE api_hits SET source_image_name = ? WHERE id = ?`).run(updated, row.id);
+    }
+  } catch {}
+
   // Seed default settings langsung dari data bawaan / dummy (tanpa ketergantungan pada file .env)
   try {
     const existing = db.prepare(`SELECT id FROM app_settings WHERE id = 1`).get();
