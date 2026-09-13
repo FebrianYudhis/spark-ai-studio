@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Scissors, UploadCloud, Plus, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2 } from 'lucide-react';
+import { Scissors, UploadCloud, Plus, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import {
   AVAILABLE_MODELS,
@@ -112,6 +112,38 @@ export default function EditsTab({
   const [isEnhancing, setIsEnhancing] = useState(false);
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const additionalInputRef = useRef<HTMLInputElement>(null);
+  const [isRedownloading, setIsRedownloading] = useState(false);
+
+  const handleRedownload = async () => {
+    if (!result?.historyId) return;
+    setIsRedownloading(true);
+    try {
+      const res = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: result.historyId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                resultImageUrl: data.resultImageUrl,
+                resultImageUrls: data.resultImageUrls || [data.resultImageUrl],
+              }
+            : null
+        );
+        showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
+      } else {
+        showToast(data.error || 'Gagal mengambil ulang gambar dari response payload', 'error');
+      }
+    } catch {
+      showToast('Koneksi ke server gagal saat mengambil ulang gambar', 'error');
+    } finally {
+      setIsRedownloading(false);
+    }
+  };
 
   const handleEnhancePrompt = async () => {
     if (!prompt.trim()) {
@@ -393,7 +425,7 @@ export default function EditsTab({
     return () => {
       isMounted = false;
     };
-  }, [presetEditSession, clearPrimaryImage, clearAllAdditionalImages]);
+  }, [presetEditSession, clearPrimaryImage, clearAllAdditionalImages, onModelChange]);
 
   // Scaler multiplier: 2x or 0.5x dengan batas edge limits OpenAI (maxDim <= 3840, minDim <= 2160)
   const handleScale = (factor: number) => {
@@ -431,6 +463,33 @@ export default function EditsTab({
     additionalImages.reduce((acc, it) => acc + it.file.size, 0);
 
   const totalImageCount = (primaryImage ? 1 : 0) + additionalImages.length;
+  const estimatedPayloadBytes = Math.round(totalBytes * 1.37);
+
+  const getPayloadStatus = (bytes: number) => {
+    const mb = bytes / (1024 * 1024);
+    if (mb < 15) {
+      return {
+        label: 'Aman (Optimal)',
+        color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+        badgeColor: 'bg-emerald-500',
+        note: 'Ukuran payload dalam batas optimal untuk transmisi cepat tanpa risiko timeout.',
+      };
+    } else if (mb < 30) {
+      return {
+        label: 'Sedang (Waspada)',
+        color: 'text-amber-800 bg-amber-50 border-amber-200',
+        badgeColor: 'bg-amber-500',
+        note: 'Ukuran payload lumayan besar. Pastikan koneksi internet stabil saat proses edit.',
+      };
+    } else {
+      return {
+        label: 'Besar (Risiko Timeout)',
+        color: 'text-rose-800 bg-rose-50 border-rose-200',
+        badgeColor: 'bg-rose-500',
+        note: 'Ukuran mendekati/melebihi batas umum API (30MB+). Jika gagal, pertimbangkan kompresi gambar.',
+      };
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -770,6 +829,49 @@ export default function EditsTab({
                 </div>
               )}
             </div>
+
+            {/* AKUMULASI UKURAN PAYLOAD GAMBAR */}
+            {totalImageCount > 0 && (
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <HardDrive className="w-3.5 h-3.5 text-slate-600" />
+                      Estimasi Akumulasi Payload
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      ({totalImageCount} file: {primaryImage ? '1 dasar' : '0 dasar'}
+                      {additionalImages.length > 0 ? ` + ${additionalImages.length} tambahan` : ''})
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const status = getPayloadStatus(estimatedPayloadBytes);
+                    return (
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border flex items-center gap-1.5 ${status.color}`}>
+                        <span className={`w-2 h-2 rounded-full ${status.badgeColor}`} />
+                        {status.label}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">Total File Asli</span>
+                    <span className="text-sm font-bold font-mono text-slate-800">{formatFileSize(totalBytes)}</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">Estimasi Payload (Base64)</span>
+                    <span className="text-sm font-bold font-mono text-indigo-700">{formatFileSize(estimatedPayloadBytes)}</span>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  * API AI mengenkapsulasi gambar ke Base64 (penambahan ukuran ~33%). {getPayloadStatus(estimatedPayloadBytes).note}
+                </p>
+              </div>
+            )}
 
             {/* Prompt Input */}
             <div>
@@ -1181,6 +1283,18 @@ export default function EditsTab({
                             >
                               <Download className="w-3.5 h-3.5" /> Unduh
                             </a>
+                            {result.historyId && (
+                              <button
+                                type="button"
+                                onClick={handleRedownload}
+                                disabled={isRedownloading}
+                                className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
+                                title="Ambil ulang file gambar dari respons API ke server lokal"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isRedownloading ? 'animate-spin text-emerald-600' : ''}`} />
+                                <span className="hidden sm:inline">{isRedownloading ? '...' : 'Ambil Ulang'}</span>
+                              </button>
+                            )}
                             <a
                               href={url}
                               target="_blank"

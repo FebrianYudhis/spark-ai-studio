@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(chatPayload),
+      signal: AbortSignal.timeout(45000),
     });
 
     const rawText = await res.text();
@@ -110,11 +111,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     console.error('[enhance] Exception:', err);
+    let message = err instanceof Error ? err.message : String(err);
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      message = 'Koneksi ke server AI Enhancer timeout setelah 45 detik. Pastikan server merespons dengan cepat.';
+    }
     return NextResponse.json(
       {
-        error:
-          'Terjadi kesalahan saat memproses enhance prompt: ' +
-          (err instanceof Error ? err.message : String(err)),
+        error: 'Terjadi kesalahan saat memproses enhance prompt: ' + message,
       },
       { status: 500 }
     );

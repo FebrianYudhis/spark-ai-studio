@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(forwardPayload),
+      signal: AbortSignal.timeout(120000),
     });
 
     const statusCode = apiResponse.status;
@@ -179,6 +180,12 @@ export async function POST(req: NextRequest) {
         if (cached) {
           savedResultUrls.push(cached);
         }
+      }
+      if (rawImages.length === 0) {
+        const errObj = responseData?.error as { message?: string } | undefined;
+        errorMessage = errObj?.message || 'Tidak ditemukan data gambar pada respons API edits.';
+      } else if (savedResultUrls.length === 0) {
+        errorMessage = 'Gagal mengunduh atau menyimpan gambar hasil edit ke disk lokal.';
       }
     } else {
       errorMessage = (responseData?.error as { message?: string })?.message || JSON.stringify(responseData);
@@ -210,10 +217,12 @@ export async function POST(req: NextRequest) {
       error_message: errorMessage,
     });
 
+    const isSuccess = apiResponse.ok && savedResultUrls.length > 0;
+
     return NextResponse.json({
-      success: apiResponse.ok,
+      success: isSuccess,
       historyId,
-      statusCode,
+      statusCode: isSuccess ? statusCode : (statusCode >= 400 ? statusCode : 400),
       targetUrl,
       requestSummary,
       sourceImageUrls: allSavedSources.map((s) => s.url),
@@ -222,10 +231,13 @@ export async function POST(req: NextRequest) {
       resultImageUrls: savedResultUrls,
       response: responseData,
       errorMessage,
-    }, { status: statusCode >= 200 && statusCode < 300 ? 200 : statusCode });
+    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400) });
 
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    let message = err instanceof Error ? err.message : String(err);
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      message = 'Koneksi ke gateway AI timeout setelah 120 detik. Server remote sedang antre atau lambat merespons.';
+    }
     const historyId = saveApiHit({
       type: 'edit',
       endpoint: targetUrl,

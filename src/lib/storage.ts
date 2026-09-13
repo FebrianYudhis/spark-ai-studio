@@ -44,15 +44,21 @@ export function extractImageStrings(responseData: unknown): string[] {
   const results: string[] = [];
   const resObj = responseData as Record<string, unknown>;
 
+  const pushValid = (str: unknown) => {
+    if (typeof str === 'string') {
+      const trimmed = str.trim();
+      if (trimmed) results.push(trimmed);
+    }
+  };
+
   // 1. Standar OpenAI: data: [ { url: '...' }, { b64_json: '...' } ]
   if (Array.isArray(resObj.data)) {
     for (const item of resObj.data) {
       if (typeof item === 'string') {
-        results.push(item);
+        pushValid(item);
       } else if (item && typeof item === 'object') {
         const entry = item as Record<string, unknown>;
-        const val = entry.url || entry.b64_json || entry.image || entry.base64;
-        if (typeof val === 'string') results.push(val);
+        pushValid(entry.url || entry.b64_json || entry.image || entry.base64);
       }
     }
   }
@@ -60,27 +66,27 @@ export function extractImageStrings(responseData: unknown): string[] {
   // 2. Format Provider Alternatif: images: [ ... ]
   if (Array.isArray(resObj.images)) {
     for (const item of resObj.images) {
-      if (typeof item === 'string') results.push(item);
-      else if (item && typeof item === 'object') {
+      if (typeof item === 'string') {
+        pushValid(item);
+      } else if (item && typeof item === 'object') {
         const entry = item as Record<string, unknown>;
-        const val = entry.url || entry.b64_json || entry.image;
-        if (typeof val === 'string') results.push(val);
+        pushValid(entry.url || entry.b64_json || entry.image);
       }
     }
   }
 
   // 3. Field tunggal gambar di root: image / url / b64_json
-  if (typeof resObj.image === 'string') results.push(resObj.image);
-  if (typeof resObj.url === 'string') results.push(resObj.url);
-  if (typeof resObj.b64_json === 'string') results.push(resObj.b64_json);
+  pushValid(resObj.image);
+  pushValid(resObj.url);
+  pushValid(resObj.b64_json);
 
   // 4. Format Output Replicate / AI Gateway lainnya
   if (Array.isArray(resObj.output)) {
     for (const item of resObj.output) {
-      if (typeof item === 'string') results.push(item);
+      pushValid(item);
     }
-  } else if (typeof resObj.output === 'string') {
-    results.push(resObj.output);
+  } else {
+    pushValid(resObj.output);
   }
 
   return results;
@@ -89,7 +95,8 @@ export function extractImageStrings(responseData: unknown): string[] {
 /**
  * Mengunduh buffer gambar dari URL remote dengan dukungan redirect dan toleransi SSL proxy
  */
-function downloadRemoteBuffer(url: string, maxRedirects = 3): Promise<{ buffer: Buffer; contentType: string } | null> {
+function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const url = (urlInput || '').trim();
   return new Promise((resolve) => {
     if (maxRedirects < 0) {
       console.warn(`[storage] Too many redirects for: ${url}`);
@@ -162,11 +169,15 @@ function downloadRemoteBuffer(url: string, maxRedirects = 3): Promise<{ buffer: 
  * Jika gagal disimpan, mengembalikan undefined (link asli tetap aman di response payload).
  */
 export async function saveRemoteOrBase64Image(
-  urlOrBase64: string,
+  urlOrBase64Input: string,
   prefix: string = 'result'
 ): Promise<string | undefined> {
   try {
     ensureUploadsDir();
+    if (!urlOrBase64Input || typeof urlOrBase64Input !== 'string') return undefined;
+    const urlOrBase64 = urlOrBase64Input.trim();
+    if (!urlOrBase64) return undefined;
+
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 7);
 
@@ -383,4 +394,54 @@ export function cleanupAllUploadFiles(): { deletedCount: number; freedBytes: num
     console.error('[storage] Error cleaning all upload files:', err);
     return { deletedCount: 0, freedBytes: 0 };
   }
+}
+
+/**
+ * Mengonversi path file lokal (/uploads/...), URL remote, atau Base64 ke format Base64 Data URL (data:image/...;base64,...)
+ */
+export async function convertImageToBase64DataUrl(imagePathOrUrl: string): Promise<string | null> {
+  if (!imagePathOrUrl || typeof imagePathOrUrl !== 'string') return null;
+  const trimmed = imagePathOrUrl.trim();
+  if (!trimmed) return null;
+
+  // 1. Sudah berupa data URL
+  if (trimmed.startsWith('data:image/')) {
+    return trimmed;
+  }
+
+  // 2. File lokal (contoh: /uploads/edit_...png)
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('uploads/')) {
+    const cleanRel = trimmed.replace(/^\//, '');
+    const localPath = path.join(process.cwd(), 'public', cleanRel);
+    if (fs.existsSync(localPath)) {
+      try {
+        const buffer = fs.readFileSync(localPath);
+        const ext = path.extname(localPath).toLowerCase().replace('.', '') || 'png';
+        const mime = ext === 'jpg' ? 'jpeg' : ext;
+        return `data:image/${mime};base64,${buffer.toString('base64')}`;
+      } catch (e) {
+        console.error(`[storage] Error reading local image file ${localPath}:`, e);
+      }
+    }
+  }
+
+  // 3. URL Remote http:// atau https://
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const downloaded = await downloadRemoteBuffer(trimmed);
+      if (downloaded && downloaded.buffer) {
+        const mime = downloaded.contentType || 'image/png';
+        return `data:${mime};base64,${downloaded.buffer.toString('base64')}`;
+      }
+    } catch (e) {
+      console.error(`[storage] Error downloading remote image ${trimmed}:`, e);
+    }
+  }
+
+  // 4. Raw base64 string tanpa header prefix
+  if (/^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 100) {
+    return `data:image/png;base64,${trimmed}`;
+  }
+
+  return null;
 }

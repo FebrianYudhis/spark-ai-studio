@@ -53,6 +53,14 @@ import { DEFAULT_ENHANCER_PROMPT } from './models';
 export { DEFAULT_ENHANCER_PROMPT };
 
 function initSchema(db: DatabaseSync) {
+  try {
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
+      PRAGMA synchronous = NORMAL;
+    `);
+  } catch {}
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS api_hits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

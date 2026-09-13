@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(forwardPayload),
+      signal: AbortSignal.timeout(120000),
     });
 
     const statusCode = apiResponse.status;
@@ -108,6 +109,12 @@ export async function POST(req: NextRequest) {
       const rawImages = extractImageStrings(responseData);
       if (rawImages.length > 0) {
         resultImageUrl = await saveRemoteOrBase64Image(rawImages[0], 'gen');
+        if (!resultImageUrl) {
+          errorMessage = 'Gagal mengunduh atau menyimpan gambar hasil ke disk lokal.';
+        }
+      } else {
+        const errObj = responseData?.error as { message?: string } | undefined;
+        errorMessage = errObj?.message || 'Tidak ditemukan URL atau data Base64 gambar pada response payload API.';
       }
     } else {
       errorMessage = (responseData?.error as { message?: string })?.message || JSON.stringify(responseData);
@@ -127,19 +134,24 @@ export async function POST(req: NextRequest) {
       error_message: errorMessage,
     });
 
+    const isSuccess = apiResponse.ok && Boolean(resultImageUrl);
+
     return NextResponse.json({
-      success: apiResponse.ok,
+      success: isSuccess,
       historyId,
-      statusCode,
+      statusCode: isSuccess ? statusCode : (statusCode >= 400 ? statusCode : 400),
       targetUrl,
       requestPayload,
       resultImageUrl,
       response: responseData,
       errorMessage,
-    }, { status: statusCode >= 200 && statusCode < 300 ? 200 : statusCode });
+    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400) });
 
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    let message = err instanceof Error ? err.message : String(err);
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      message = 'Koneksi ke gateway AI timeout setelah 120 detik. Server remote sedang antre atau lambat merespons.';
+    }
     const historyId = saveApiHit({
       type: 'generation',
       endpoint: targetUrl,

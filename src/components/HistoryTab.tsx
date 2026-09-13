@@ -5,7 +5,7 @@ import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircl
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
-import { formatSafeDate, type EditSessionData } from '@/lib/models';
+import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
 
 interface StorageStatsInfo {
   totalFiles: number;
@@ -48,8 +48,34 @@ export default function HistoryTab({
   const [selectedItem, setSelectedItem] = useState<ApiHitRecord | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
+  const [exportingState, setExportingState] = useState<{ id: number; format: 'json' | 'csv' } | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
   const [cleaningStorage, setCleaningStorage] = useState(false);
+
+  const handleExport = async (id: number, format: 'json' | 'csv') => {
+    setExportingState({ id, format });
+    try {
+      const res = await fetch(`/api/history/export?id=${id}&format=${format}`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Gagal mengekspor riwayat');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `riwayat_${id}_base64.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast(`Riwayat #${id} berhasil diekspor ke ${format.toUpperCase()} (Base64)!`, 'success');
+    } catch (err: unknown) {
+      showError('Gagal Ekspor', err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportingState(null);
+    }
+  };
 
   // Debounce input pencarian selama 300ms dan reset ke halaman 1
   useEffect(() => {
@@ -651,41 +677,66 @@ export default function HistoryTab({
                 </div>
 
                 {/* Footer Buttons */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                  {isGen ? (
-                    <button
-                      onClick={() => onSelectPrompt(item.prompt, item.model, 'generation')}
-                      className="px-3.5 py-2 sm:py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl sm:rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                      Gunakan Ulang Prompt
-                    </button>
-                  ) : onReuseEditSession ? (
-                    <button
-                      onClick={() => {
-                        const sourceUrls = parseUrls(item.source_image_url);
-                        let parsedReq: Record<string, unknown> | null = null;
-                        try {
-                          if (item.request_payload) parsedReq = JSON.parse(item.request_payload);
-                        } catch {}
-                        onReuseEditSession({
-                          prompt: item.prompt,
-                          primaryUrl: sourceUrls[0] || '',
-                          additionalUrls: sourceUrls.slice(1),
-                          model: item.model,
-                          size: item.size || (parsedReq?.size as string | undefined),
-                          quality: parsedReq?.quality as any,
-                          inputFidelity: parsedReq?.input_fidelity as any,
-                        });
-                      }}
-                      className="px-3.5 py-2 sm:py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl sm:rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                      Ulangi Proses
-                    </button>
-                  ) : (
-                    <span />
-                  )}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {isGen ? (
+                      <button
+                        onClick={() => onSelectPrompt(item.prompt, item.model, 'generation')}
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        Gunakan Ulang Prompt
+                      </button>
+                    ) : onReuseEditSession ? (
+                      <button
+                        onClick={() => {
+                          const sourceUrls = parseUrls(item.source_image_url);
+                          let parsedReq: Record<string, unknown> | null = null;
+                          try {
+                            if (item.request_payload) parsedReq = JSON.parse(item.request_payload);
+                          } catch {}
+                          onReuseEditSession({
+                            prompt: item.prompt,
+                            primaryUrl: sourceUrls[0] || '',
+                            additionalUrls: sourceUrls.slice(1),
+                            model: item.model,
+                            size: item.size || (parsedReq?.size as string | undefined),
+                            quality: parsedReq?.quality as ImageQuality | undefined,
+                            inputFidelity: parsedReq?.input_fidelity as InputFidelity | undefined,
+                          });
+                        }}
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        Ulangi Proses
+                      </button>
+                    ) : null}
+
+                    {/* Tombol Ekspor Single History (JSON / CSV dengan Base64) */}
+                    <div className="flex items-center gap-1 border-l border-slate-200 pl-1.5 ml-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">Ekspor:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleExport(item.id, 'json')}
+                        disabled={exportingState?.id === item.id}
+                        className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                        title="Ekspor riwayat ini ke JSON (semua gambar berupa format Base64)"
+                      >
+                        <Download className="w-3 h-3 text-indigo-600 shrink-0" />
+                        <span>{exportingState?.id === item.id && exportingState.format === 'json' ? '...' : 'JSON'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExport(item.id, 'csv')}
+                        disabled={exportingState?.id === item.id}
+                        className="px-2 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                        title="Ekspor riwayat ini ke CSV (semua gambar berupa format Base64)"
+                      >
+                        <Download className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>{exportingState?.id === item.id && exportingState.format === 'csv' ? '...' : 'CSV'}</span>
+                      </button>
+                    </div>
+                  </div>
 
                   <button
                     onClick={() => {
@@ -696,7 +747,7 @@ export default function HistoryTab({
                         onUseAsEditBase(imgUrl);
                       }
                     }}
-                    className="px-3.5 py-2 sm:py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl sm:rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-emerald-200 cursor-pointer sm:ml-auto"
+                    className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-emerald-200 cursor-pointer sm:ml-auto"
                   >
                     <Scissors className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     Edit Gambar

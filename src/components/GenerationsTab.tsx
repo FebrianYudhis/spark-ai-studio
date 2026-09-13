@@ -89,6 +89,30 @@ export default function GenerationsTab({
 
   const [showJson, setShowJson] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isRedownloading, setIsRedownloading] = useState(false);
+
+  const handleRedownload = async () => {
+    if (!result?.historyId) return;
+    setIsRedownloading(true);
+    try {
+      const res = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: result.historyId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.resultImageUrl) {
+        setResult((prev) => (prev ? { ...prev, resultImageUrl: data.resultImageUrl } : null));
+        showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
+      } else {
+        showToast(data.error || 'Gagal mengambil ulang gambar dari response payload', 'error');
+      }
+    } catch {
+      showToast('Koneksi ke server gagal saat mengambil ulang gambar', 'error');
+    } finally {
+      setIsRedownloading(false);
+    }
+  };
 
   const handleEnhancePrompt = async () => {
     if (!prompt.trim()) {
@@ -670,6 +694,18 @@ export default function GenerationsTab({
                   >
                     <Download className="w-4 h-4" /> Unduh Gambar
                   </a>
+                  {result.historyId && (
+                    <button
+                      type="button"
+                      onClick={handleRedownload}
+                      disabled={isRedownloading}
+                      className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
+                      title="Ambil ulang file gambar dari respons API ke server lokal"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isRedownloading ? 'animate-spin text-purple-600' : ''}`} />
+                      <span>{isRedownloading ? 'Mengambil...' : 'Ambil Ulang'}</span>
+                    </button>
+                  )}
                   <a
                     href={result.resultImageUrl}
                     target="_blank"
