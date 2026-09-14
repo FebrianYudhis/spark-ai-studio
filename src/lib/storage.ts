@@ -189,8 +189,29 @@ export async function saveRemoteOrBase64Image(
     const isDataUri = urlOrBase64.startsWith('data:image/');
     const isHttp = urlOrBase64.startsWith('http://') || urlOrBase64.startsWith('https://');
 
-    // 1. Deteksi BASE64 (baik data URI maupun raw string base64 dari b64_json)
-    if (isDataUri || !isHttp) {
+    // 1. Deteksi REMOTE URL (HTTP / HTTPS)
+    if (isHttp) {
+      const downloaded = await downloadRemoteBuffer(urlOrBase64);
+      if (!downloaded || downloaded.buffer.length === 0) {
+        console.warn(`[storage] Gambar dari URL remote gagal diunduh ke lokal: ${urlOrBase64}`);
+        return undefined;
+      }
+
+      let ext = 'png';
+      const ct = downloaded.contentType.toLowerCase();
+      if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpg';
+      else if (ct.includes('webp')) ext = 'webp';
+      else if (ct.includes('gif')) ext = 'gif';
+
+      const filename = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
+      const filePath = path.join(UPLOAD_DIR, filename);
+      fs.writeFileSync(filePath, downloaded.buffer);
+      return `/uploads/${filename}`;
+    }
+
+    // 2. Deteksi BASE64 (baik data URI maupun raw string base64 dari b64_json)
+    const isRawBase64 = /^[A-Za-z0-9+/=\s]+$/.test(urlOrBase64) && urlOrBase64.length > 64;
+    if (isDataUri || isRawBase64) {
       const cleanBase64 = urlOrBase64.replace(/^data:image\/[a-zA-Z+.-]+;base64,/, '').trim();
       const buffer = Buffer.from(cleanBase64, 'base64');
       if (!buffer || buffer.length === 0) {
@@ -209,24 +230,8 @@ export async function saveRemoteOrBase64Image(
       return `/uploads/${filename}`;
     }
 
-    // 2. Deteksi REMOTE URL (HTTP / HTTPS)
-    const downloaded = await downloadRemoteBuffer(urlOrBase64);
-    if (!downloaded || downloaded.buffer.length === 0) {
-      console.warn(`[storage] Gambar dari URL remote gagal diunduh ke lokal: ${urlOrBase64}`);
-      // Jangan kembalikan link asli eksternal!
-      return undefined;
-    }
-
-    let ext = 'png';
-    const ct = downloaded.contentType.toLowerCase();
-    if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpg';
-    else if (ct.includes('webp')) ext = 'webp';
-    else if (ct.includes('gif')) ext = 'gif';
-
-    const filename = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
-    const filePath = path.join(UPLOAD_DIR, filename);
-    fs.writeFileSync(filePath, downloaded.buffer);
-    return `/uploads/${filename}`;
+    // String bukan format gambar yang dikenali
+    return undefined;
   } catch (error) {
     console.error('Failed to cache image locally:', error);
     // Jangan kembalikan link asli eksternal!

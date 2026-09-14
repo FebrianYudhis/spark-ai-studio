@@ -349,7 +349,6 @@ export default function EditsTab({
     }
     if (presetEditSession.model && isValidModel(presetEditSession.model)) {
       setModel(presetEditSession.model as AvailableModel);
-      onModelChange?.(presetEditSession.model as AvailableModel);
     }
     setError(null);
     setResult(null);
@@ -425,7 +424,8 @@ export default function EditsTab({
     return () => {
       isMounted = false;
     };
-  }, [presetEditSession, clearPrimaryImage, clearAllAdditionalImages, onModelChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally trigger only when a new session key is provided
+  }, [presetEditSession?.key, clearPrimaryImage, clearAllAdditionalImages]);
 
   // Scaler multiplier: 2x or 0.5x dengan batas edge limits OpenAI (maxDim <= 3840, minDim <= 2160)
   const handleScale = (factor: number) => {

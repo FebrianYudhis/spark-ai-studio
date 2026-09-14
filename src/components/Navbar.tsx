@@ -22,6 +22,7 @@ interface NavbarProps {
 export default function Navbar({
   activeTab,
   setActiveTab,
+  config,
   historyCount,
   isGenerating,
   isEditing,
@@ -110,11 +111,14 @@ export default function Navbar({
             {onOpenSettings && (
               <button
                 onClick={onOpenSettings}
-                className="px-2 sm:px-3 md:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 sm:gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-all cursor-pointer"
-                title="Buka Pengaturan API"
+                className="px-2 sm:px-3 md:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 sm:gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-all cursor-pointer relative"
+                title={config?.isConfigured ? 'Pengaturan API (Terkonfigurasi)' : 'Buka Pengaturan API (Kunci API Belum Diatur)'}
               >
                 <Settings className="w-3.5 h-3.5 shrink-0" />
                 <span className="hidden sm:inline">Pengaturan</span>
+                {config && !config.isConfigured && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="Kunci API belum diisi" />
+                )}
               </button>
             )}
           </nav>

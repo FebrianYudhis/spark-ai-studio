@@ -139,12 +139,13 @@ export default function HistoryTab({
     }
   }, []);
 
-  const fetchHistory = useCallback(async () => {
+  const fetchHistory = useCallback(async (overridePage?: number) => {
     setLoading(true);
     try {
+      const targetPage = overridePage ?? page;
       const params = new URLSearchParams();
       if (filterType !== 'all') params.set('type', filterType);
-      params.set('page', String(page));
+      params.set('page', String(targetPage));
       params.set('limit', String(limit));
       if (debouncedSearch) params.set('search', debouncedSearch);
 
@@ -216,10 +217,13 @@ export default function HistoryTab({
       const res = await fetch(url, { method: 'DELETE' });
       if (res.ok) {
         setItems([]);
-        setPage(1);
         showToast('Semua riwayat dan file gambarnya berhasil dibersihkan', 'success');
         onUpdateHistory?.();
-        fetchHistory();
+        if (page !== 1) {
+          setPage(1);
+        } else {
+          fetchHistory(1);
+        }
         fetchStorageStats();
       } else {
         showError('Gagal Menghapus', 'Gagal membersihkan riwayat');
@@ -395,7 +399,7 @@ export default function HistoryTab({
             )}
 
             <button
-              onClick={fetchHistory}
+              onClick={() => fetchHistory()}
               className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200 transition-colors shrink-0 cursor-pointer"
               title="Muat Ulang"
             >

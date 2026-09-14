@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import GenerationsTab from '@/components/GenerationsTab';
 import EditsTab from '@/components/EditsTab';
@@ -17,6 +17,12 @@ interface AppConfig {
   rawToken?: string;
   defaultGenerationsModel: string;
   defaultEditsModel: string;
+  enhancerBaseUrl?: string;
+  enhancerToken?: string;
+  isEnhancerConfigured?: boolean;
+  maskedEnhancerToken?: string;
+  enhancerModel?: string;
+  enhancerPrompt?: string;
   updatedAt?: string;
 }
 
@@ -121,7 +127,7 @@ export default function Home() {
     fetchConfigAndHistoryCount();
   };
 
-  const handleGenerationsModelChange = async (newModel: string) => {
+  const handleGenerationsModelChange = useCallback(async (newModel: string) => {
     try {
       await fetch('/api/config', {
         method: 'POST',
@@ -132,9 +138,9 @@ export default function Home() {
     } catch (e) {
       console.error('Failed to sync generations model:', e);
     }
-  };
+  }, []);
 
-  const handleEditsModelChange = async (newModel: string) => {
+  const handleEditsModelChange = useCallback(async (newModel: string) => {
     try {
       await fetch('/api/config', {
         method: 'POST',
@@ -145,7 +151,7 @@ export default function Home() {
     } catch (e) {
       console.error('Failed to sync edits model:', e);
     }
-  };
+  }, []);
 
   const handleSelectPromptFromHistory = (prompt: string, historyModel: string, type: 'generation' | 'edit') => {
     setPresetPrompt(prompt);
