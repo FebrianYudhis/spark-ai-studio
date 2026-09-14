@@ -86,16 +86,29 @@ export async function GET(request: NextRequest) {
         error_message: record.error_message || '',
       };
 
-      // Tambahkan setiap layer gambar sumber sebagai kolom
-      Object.entries(sourceImagesBase64).forEach(([layerKey, b64]) => {
-        const colName = layerKey.replace(' ', '_') + '_base64';
-        csvData[colName] = b64;
+      // Tambahkan URL lokal gambar sumber & hasil ke kolom CSV
+      sourceUrls.forEach((url, i) => {
+        csvData[`image_${i + 1}_url`] = url;
+      });
+      resultUrls.forEach((url, i) => {
+        const colName = resultUrls.length === 1 ? 'result_image_url' : `result_image_${i + 1}_url`;
+        csvData[colName] = url;
       });
 
-      // Tambahkan setiap layer gambar hasil sebagai kolom
+      // Tambahkan Base64 dengan proteksi batas 32.767 karakter sel spreadsheet (Excel/Calc)
+      const MAX_CSV_CELL_LENGTH = 32000;
+      Object.entries(sourceImagesBase64).forEach(([layerKey, b64]) => {
+        const colName = layerKey.replace(' ', '_') + '_base64';
+        csvData[colName] = b64.length <= MAX_CSV_CELL_LENGTH
+          ? b64
+          : `[Base64 melebihi batas 32KB sel Excel (${(b64.length / 1024).toFixed(1)} KB) - gunakan ekspor format JSON untuk Base64 penuh]`;
+      });
+
       Object.entries(resultImagesBase64).forEach(([resultKey, b64]) => {
         const colName = resultKey.replace(' ', '_') + '_base64';
-        csvData[colName] = b64;
+        csvData[colName] = b64.length <= MAX_CSV_CELL_LENGTH
+          ? b64
+          : `[Base64 melebihi batas 32KB sel Excel (${(b64.length / 1024).toFixed(1)} KB) - gunakan ekspor format JSON untuk Base64 penuh]`;
       });
 
       csvData['request_payload'] = parsedRequest;

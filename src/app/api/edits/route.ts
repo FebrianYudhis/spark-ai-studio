@@ -104,6 +104,10 @@ export async function POST(req: NextRequest) {
     `image ${idx + 2}${getExt(s.filename)}`
   );
 
+  // Nama-nama sumber gabungan untuk disimpan di kolom tabel api_hits
+  const sourceNamesSummary = `[image 1: ${savedPrimary.filename}]` +
+    (savedAdditionals.length > 0 ? `, tambahan: ${savedAdditionals.map((s, idx) => `[image ${idx + 2}: ${s.filename}]`).join(', ')}` : '');
+
   // Konversi buffer gambar lokal ke Data URL Base64
   const toDataUrl = (buffer: Buffer, fileType?: string) =>
     `data:${fileType || 'image/png'};base64,${buffer.toString('base64')}`;
@@ -193,10 +197,6 @@ export async function POST(req: NextRequest) {
 
     const primaryResultImageUrl = savedResultUrls.length > 0 ? savedResultUrls[0] : undefined;
 
-    // Nama-nama sumber gabungan untuk disimpan di kolom tabel
-    const sourceNamesSummary = `[image 1: ${savedPrimary.filename}]` +
-      (savedAdditionals.length > 0 ? `, tambahan: ${savedAdditionals.map((s, idx) => `[image ${idx + 2}: ${s.filename}]`).join(', ')}` : '');
-
     // Simpan ke database SQLite
     const historyId = saveApiHit({
       type: 'edit',
@@ -243,7 +243,8 @@ export async function POST(req: NextRequest) {
       endpoint: targetUrl,
       model,
       prompt,
-      source_image_name: `[image 1: ${savedPrimary.filename}]`,
+      size,
+      source_image_name: sourceNamesSummary,
       source_image_size: totalSize,
       source_image_url: JSON.stringify(allSavedSources.map((s) => s.url)),
       request_payload: requestSummary,

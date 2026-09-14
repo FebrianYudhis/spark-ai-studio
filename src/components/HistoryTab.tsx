@@ -6,6 +6,7 @@ import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
 import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
+import { copyToClipboard } from '@/lib/clipboard';
 
 interface StorageStatsInfo {
   totalFiles: number;
@@ -86,11 +87,15 @@ export default function HistoryTab({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleCopyPrompt = (promptText: string, id: number) => {
-    navigator.clipboard.writeText(promptText);
-    setCopiedId(id);
-    showToast('Prompt berhasil disalin ke clipboard!', 'success');
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyPrompt = async (promptText: string, id: number) => {
+    const success = await copyToClipboard(promptText);
+    if (success) {
+      setCopiedId(id);
+      showToast('Prompt berhasil disalin ke clipboard!', 'success');
+      setTimeout(() => setCopiedId(null), 2000);
+    } else {
+      showError('Gagal Menyalin', 'Tidak dapat menyalin ke clipboard. Silakan salin teks secara manual.');
+    }
   };
 
   const handleRedownload = async (id: number) => {

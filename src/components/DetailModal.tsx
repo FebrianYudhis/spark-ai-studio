@@ -5,6 +5,7 @@ import { X, Copy, Check, ExternalLink, Download, FileText, AlertCircle, MessageS
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
 import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
+import { copyToClipboard as writeToClipboard } from '@/lib/clipboard';
 
 interface DetailModalProps {
   item: ApiHitRecord | null;
@@ -91,22 +92,30 @@ export default function DetailModal({
     }
   };
 
-  const copyPromptToClipboard = () => {
-    navigator.clipboard.writeText(item.prompt);
-    setCopiedPrompt(true);
-    showToast('Prompt berhasil disalin ke clipboard!', 'success');
-    setTimeout(() => setCopiedPrompt(false), 2000);
+  const copyPromptToClipboard = async () => {
+    const success = await writeToClipboard(item.prompt);
+    if (success) {
+      setCopiedPrompt(true);
+      showToast('Prompt berhasil disalin ke clipboard!', 'success');
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } else {
+      showError('Gagal Menyalin', 'Tidak dapat menyalin ke clipboard.');
+    }
   };
 
-  const copyToClipboard = (text: string, type: 'payload' | 'response') => {
-    navigator.clipboard.writeText(text);
-    showToast(`JSON ${type === 'payload' ? 'Request' : 'Response'} berhasil disalin!`, 'success');
-    if (type === 'payload') {
-      setCopiedPayload(true);
-      setTimeout(() => setCopiedPayload(false), 2000);
+  const copyToClipboard = async (text: string, type: 'payload' | 'response') => {
+    const success = await writeToClipboard(text);
+    if (success) {
+      showToast(`JSON ${type === 'payload' ? 'Request' : 'Response'} berhasil disalin!`, 'success');
+      if (type === 'payload') {
+        setCopiedPayload(true);
+        setTimeout(() => setCopiedPayload(false), 2000);
+      } else {
+        setCopiedResponse(true);
+        setTimeout(() => setCopiedResponse(false), 2000);
+      }
     } else {
-      setCopiedResponse(true);
-      setTimeout(() => setCopiedResponse(false), 2000);
+      showError('Gagal Menyalin', `Tidak dapat menyalin JSON ${type === 'payload' ? 'Request' : 'Response'}.`);
     }
   };
 
