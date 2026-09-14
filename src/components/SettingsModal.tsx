@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Settings,
@@ -17,8 +17,10 @@ import {
   Wand2,
   Image as ImageIcon,
   RotateCcw,
+  Download,
+  Upload,
 } from 'lucide-react';
-import { showToast, showError } from '@/lib/swal';
+import { showToast, showError, showConfirm } from '@/lib/swal';
 import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
 
 export interface AppConfigData {
@@ -77,6 +79,9 @@ export default function SettingsModal({
   const [showEnhancerToken, setShowEnhancerToken] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -168,6 +173,136 @@ export default function SettingsModal({
       showError('Koneksi Gagal', 'Koneksi ke server gagal');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExportSettings = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/config?export=download&t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Gagal mengambil data pengaturan`);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `spark_ai_studio_settings_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showToast('Pengaturan berhasil diekspor ke berkas JSON!', 'success');
+    } catch (err: unknown) {
+      showError('Gagal Ekspor Pengaturan', err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportSettings = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input agar berkas yang sama bisa dipilih ulang jika diperlukan
+    e.target.value = '';
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error('Berkas yang diunggah tidak berformat JSON yang valid.');
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Format isi berkas pengaturan tidak sesuai.');
+      }
+
+      // Ambil objek data pengaturan (baik dalam wrapper { settings: { ... } } maupun format datar)
+      const settingsData = (parsed.settings && typeof parsed.settings === 'object')
+        ? (parsed.settings as Record<string, unknown>)
+        : parsed;
+
+      // Ekstrak HANYA field pengaturan (tidak menyentuh riwayat atau data lain)
+      const importedBaseUrl = typeof (settingsData.base_url ?? settingsData.baseUrl) === 'string'
+        ? String(settingsData.base_url ?? settingsData.baseUrl).trim()
+        : baseUrl;
+      const importedToken = typeof (settingsData.api_token ?? settingsData.token ?? settingsData.rawToken) === 'string'
+        ? String(settingsData.api_token ?? settingsData.token ?? settingsData.rawToken).trim()
+        : token;
+      const importedGenModel = typeof (settingsData.generations_model ?? settingsData.generationsModel) === 'string'
+        ? String(settingsData.generations_model ?? settingsData.generationsModel).trim()
+        : generationsModel;
+      const importedEditModel = typeof (settingsData.edits_model ?? settingsData.editsModel) === 'string'
+        ? String(settingsData.edits_model ?? settingsData.editsModel).trim()
+        : editsModel;
+      const importedEnhancerBaseUrl = typeof (settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl) === 'string'
+        ? String(settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl).trim()
+        : enhancerBaseUrl;
+      const importedEnhancerToken = typeof (settingsData.enhancer_api_token ?? settingsData.enhancerToken) === 'string'
+        ? String(settingsData.enhancer_api_token ?? settingsData.enhancerToken).trim()
+        : enhancerToken;
+      const importedEnhancerModel = typeof (settingsData.enhancer_model ?? settingsData.enhancerModel) === 'string'
+        ? String(settingsData.enhancer_model ?? settingsData.enhancerModel).trim()
+        : enhancerModel;
+      const importedEnhancerPrompt = typeof (settingsData.enhancer_prompt ?? settingsData.enhancerPrompt) === 'string'
+        ? String(settingsData.enhancer_prompt ?? settingsData.enhancerPrompt).trim()
+        : enhancerPrompt;
+
+      // Konfirmasi keamanan SweetAlert2 sebelum menerapkan
+      const confirmed = await showConfirm({
+        title: 'Impor Pengaturan?',
+        text: `Ditemukan pengaturan dari berkas "${file.name}". Pengaturan saat ini akan digantikan dengan data dari berkas ini. Riwayat dan gambar tidak akan terpengaruh. Lanjutkan?`,
+        confirmButtonText: 'Ya, Terapkan Pengaturan',
+        cancelButtonText: 'Batal',
+        isDanger: false,
+      });
+
+      if (!confirmed) return;
+
+      // Kirim dan simpan ke backend /api/config
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: importedBaseUrl,
+          token: importedToken,
+          generationsModel: importedGenModel,
+          editsModel: importedEditModel,
+          enhancerBaseUrl: importedEnhancerBaseUrl,
+          enhancerToken: importedEnhancerToken,
+          enhancerModel: importedEnhancerModel,
+          enhancerPrompt: importedEnhancerPrompt,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal menyimpan pengaturan yang diimpor.');
+      }
+
+      // Perbarui form state di modal
+      setBaseUrl(importedBaseUrl);
+      setToken(importedToken);
+      if (isValidModel(importedGenModel)) setGenerationsModel(importedGenModel);
+      if (isValidModel(importedEditModel)) setEditsModel(importedEditModel);
+      setEnhancerBaseUrl(importedEnhancerBaseUrl);
+      setEnhancerToken(importedEnhancerToken);
+      setEnhancerModel(importedEnhancerModel);
+      setEnhancerPrompt(importedEnhancerPrompt);
+
+      // Sinkronkan state konfigurasi aplikasi parent
+      onSaveSuccess(data.config);
+
+      showToast('Pengaturan berhasil diimpor dan disimpan!', 'success');
+    } catch (err: unknown) {
+      showError('Gagal Impor Pengaturan', err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -506,32 +641,68 @@ export default function SettingsModal({
             </div>
           )}
 
-          {/* Footer / Submit Buttons */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !baseUrl.trim() || !generationsModel.trim() || !editsModel.trim()}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-            >
-              {saving ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Menyimpan...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Simpan Pengaturan</span>
-                </>
-              )}
-            </button>
+          {/* Footer / Action Buttons */}
+          <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            {/* Left: Export & Import buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportSettings}
+                disabled={isExporting || isImporting || saving}
+                className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                title="Unduh seluruh konfigurasi pengaturan saat ini ke berkas JSON"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-600" />
+                <span>{isExporting ? 'Mengekspor...' : 'Ekspor Pengaturan'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isExporting || isImporting || saving}
+                className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                title="Muat konfigurasi pengaturan dari berkas JSON"
+              >
+                <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{isImporting ? 'Mengimpor...' : 'Impor Pengaturan'}</span>
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportSettings}
+                className="hidden"
+              />
+            </div>
+
+            {/* Right: Batal & Simpan Pengaturan */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={saving || !baseUrl.trim() || !generationsModel.trim() || !editsModel.trim()}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Pengaturan</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
         </form>

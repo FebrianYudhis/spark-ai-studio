@@ -9,10 +9,41 @@ const NO_CACHE_HEADERS = {
   'Expires': '0',
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const settings = getAppSettings();
   const token = settings.api_token || '';
   const enhancerToken = settings.enhancer_api_token || '';
+
+  const { searchParams } = new URL(req.url);
+  const isExport = searchParams.get('export') === 'download' || searchParams.get('export') === 'true';
+
+  if (isExport) {
+    const exportData = {
+      app: 'spark-ai-studio',
+      type: 'settings_export',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      settings: {
+        base_url: settings.base_url,
+        api_token: settings.api_token,
+        generations_model: settings.generations_model,
+        edits_model: settings.edits_model,
+        enhancer_base_url: settings.enhancer_base_url,
+        enhancer_api_token: settings.enhancer_api_token,
+        enhancer_model: settings.enhancer_model,
+        enhancer_prompt: settings.enhancer_prompt,
+      },
+    };
+    const filename = `spark_ai_studio_settings_${new Date().toISOString().slice(0, 10)}.json`;
+    return new NextResponse(JSON.stringify(exportData, null, 2), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
 
   const isConfigured = Boolean(
     token &&
@@ -59,16 +90,18 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      baseUrl,
-      token,
-      generationsModel,
-      editsModel,
-      enhancerBaseUrl,
-      enhancerToken,
-      enhancerModel,
-      enhancerPrompt,
-    } = body;
+    const source = (body && typeof body.settings === 'object' && body.settings !== null)
+      ? body.settings
+      : (body || {});
+
+    const baseUrl = source.baseUrl ?? source.base_url;
+    const token = source.token ?? source.api_token ?? source.rawToken;
+    const generationsModel = source.generationsModel ?? source.generations_model;
+    const editsModel = source.editsModel ?? source.edits_model;
+    const enhancerBaseUrl = source.enhancerBaseUrl ?? source.enhancer_base_url;
+    const enhancerToken = source.enhancerToken ?? source.enhancer_api_token;
+    const enhancerModel = source.enhancerModel ?? source.enhancer_model;
+    const enhancerPrompt = source.enhancerPrompt ?? source.enhancer_prompt;
 
     const updated = updateAppSettings({
       base_url: baseUrl,
