@@ -29,7 +29,7 @@ export default function DetailModal({
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
   const [localResultImageUrl, setLocalResultImageUrl] = useState<string | null>(null);
-  const [exportingFormat, setExportingFormat] = useState<'json' | 'csv' | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Reset cache gambar lokal saat item yang dipilih berganti
   useEffect(() => {
@@ -40,11 +40,11 @@ export default function DetailModal({
 
   const currentResultImageUrl = localResultImageUrl ?? item.result_image_url;
 
-  const handleExport = async (format: 'json' | 'csv') => {
+  const handleExport = async () => {
     if (!item) return;
-    setExportingFormat(format);
+    setIsExporting(true);
     try {
-      const res = await fetch(`/api/history/export?id=${item.id}&format=${format}`);
+      const res = await fetch(`/api/history/export?id=${item.id}`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Gagal mengekspor riwayat');
@@ -53,16 +53,16 @@ export default function DetailModal({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `riwayat_${item.id}_${item.type}_base64.${format}`;
+      a.download = `riwayat_${item.id}_${item.type}_base64.json`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      showToast(`Riwayat #${item.id} berhasil diekspor ke ${format.toUpperCase()} (Base64)!`, 'success');
+      showToast(`Riwayat #${item.id} berhasil diekspor ke JSON!`, 'success');
     } catch (err: unknown) {
       showError('Gagal Ekspor', err instanceof Error ? err.message : String(err));
     } finally {
-      setExportingFormat(null);
+      setIsExporting(false);
     }
   };
 
@@ -454,26 +454,15 @@ export default function DetailModal({
         {/* Footer */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Ekspor Riwayat:</span>
             <button
               type="button"
-              onClick={() => handleExport('json')}
-              disabled={exportingFormat !== null}
+              onClick={handleExport}
+              disabled={isExporting}
               className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-              title="Ekspor data riwayat ini ke JSON lengkap dengan format Base64 untuk semua gambar"
+              title="Ekspor data riwayat ini ke berkas JSON lengkap dengan format Base64 untuk semua gambar"
             >
               <Download className="w-3.5 h-3.5 text-indigo-600" />
-              <span>{exportingFormat === 'json' ? 'Mengekspor...' : 'JSON (Base64)'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExport('csv')}
-              disabled={exportingFormat !== null}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-              title="Ekspor data riwayat ini ke CSV dengan kolom Base64 untuk semua gambar"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{exportingFormat === 'csv' ? 'Mengekspor...' : 'CSV (Base64)'}</span>
+              <span>{isExporting ? 'Mengekspor...' : 'Ekspor JSON'}</span>
             </button>
           </div>
 

@@ -4,12 +4,6 @@ import { convertImageToBase64DataUrl } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
-function escapeCsvCell(val: unknown): string {
-  if (val === null || val === undefined) return '""';
-  const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
-  return `"${str.replace(/"/g, '""')}"`;
-}
-
 function parseUrls(urlData: string | null | undefined): string[] {
   if (!urlData) return [];
   try {
@@ -19,11 +13,48 @@ function parseUrls(urlData: string | null | undefined): string[] {
   return [urlData].filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
 }
 
+/**
+ * Membersihkan payload JSON dari duplikasi string Base64 yang sangat panjang.
+ * Data Base64 gambar asli sudah secara rapi diekspor di bagian 'images' (sumber)
+ * dan 'result_images' (hasil AI), sehingga di request/response payload digantikan
+ * dengan catatan referensi yang ringkas.
+ */
+function sanitizePayloadForExport(payload: unknown, fieldType: 'request' | 'response'): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+
+  if (Array.isArray(payload)) {
+    return payload.map((item) => sanitizePayloadForExport(item, fieldType));
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      const lowerKey = key.toLowerCase();
+      const isBase64Key = ['b64_json', 'base64', 'image_base64'].includes(lowerKey);
+      const isDataUri = value.startsWith('data:image/');
+      const isVeryLongBase64 = value.length > 500 && /^[A-Za-z0-9+/=\s]+$/.test(value.slice(0, 100));
+
+      if (isBase64Key || isDataUri || isVeryLongBase64) {
+        const targetSection = fieldType === 'response' ? 'result_images' : 'images';
+        result[key] = `[Data Base64 dipindahkan ke '${targetSection}' untuk mencegah duplikasi data (${(value.length / 1024).toFixed(1)} KB)]`;
+        continue;
+      }
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      result[key] = sanitizePayloadForExport(value, fieldType);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get('id');
-    const format = (searchParams.get('format') || 'json').toLowerCase();
 
     if (!idParam || isNaN(Number(idParam))) {
       return NextResponse.json({ error: 'Parameter id riwayat wajib disertakan' }, { status: 400 });
@@ -72,64 +103,7 @@ export async function GET(request: NextRequest) {
 
     const filenameBase = `riwayat_${record.id}_${record.type}_${record.model.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-    // 3. Format CSV
-    if (format === 'csv') {
-      const csvData: Record<string, unknown> = {
-        id: record.id,
-        type: record.type,
-        endpoint: record.endpoint,
-        model: record.model,
-        prompt: record.prompt,
-        size: record.size || '',
-        status_code: record.status_code,
-        created_at: record.created_at,
-        error_message: record.error_message || '',
-      };
-
-      // Tambahkan URL lokal gambar sumber & hasil ke kolom CSV
-      sourceUrls.forEach((url, i) => {
-        csvData[`image_${i + 1}_url`] = url;
-      });
-      resultUrls.forEach((url, i) => {
-        const colName = resultUrls.length === 1 ? 'result_image_url' : `result_image_${i + 1}_url`;
-        csvData[colName] = url;
-      });
-
-      // Tambahkan Base64 dengan proteksi batas 32.767 karakter sel spreadsheet (Excel/Calc)
-      const MAX_CSV_CELL_LENGTH = 32000;
-      Object.entries(sourceImagesBase64).forEach(([layerKey, b64]) => {
-        const colName = layerKey.replace(' ', '_') + '_base64';
-        csvData[colName] = b64.length <= MAX_CSV_CELL_LENGTH
-          ? b64
-          : `[Base64 melebihi batas 32KB sel Excel (${(b64.length / 1024).toFixed(1)} KB) - gunakan ekspor format JSON untuk Base64 penuh]`;
-      });
-
-      Object.entries(resultImagesBase64).forEach(([resultKey, b64]) => {
-        const colName = resultKey.replace(' ', '_') + '_base64';
-        csvData[colName] = b64.length <= MAX_CSV_CELL_LENGTH
-          ? b64
-          : `[Base64 melebihi batas 32KB sel Excel (${(b64.length / 1024).toFixed(1)} KB) - gunakan ekspor format JSON untuk Base64 penuh]`;
-      });
-
-      csvData['request_payload'] = parsedRequest;
-      csvData['response_payload'] = parsedResponse;
-
-      const headers = Object.keys(csvData);
-      const row = headers.map((key) => escapeCsvCell(csvData[key]));
-
-      const csvContent = '\uFEFF' + headers.map((h) => `"${h}"`).join(',') + '\r\n' + row.join(',') + '\r\n';
-
-      return new NextResponse(csvContent, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${filenameBase}.csv"`,
-          'Cache-Control': 'no-store',
-        },
-      });
-    }
-
-    // 4. Format JSON (default)
+    // Format JSON murni (tanpa duplikasi data Base64 di payload)
     const exportJson = {
       id: record.id,
       type: record.type,
@@ -144,8 +118,8 @@ export async function GET(request: NextRequest) {
       source_image_size: record.source_image_size || null,
       images: sourceImagesBase64,
       result_images: resultImagesBase64,
-      request_payload: parsedRequest,
-      response_payload: parsedResponse,
+      request_payload: sanitizePayloadForExport(parsedRequest, 'request'),
+      response_payload: sanitizePayloadForExport(parsedResponse, 'response'),
     };
 
     return new NextResponse(JSON.stringify(exportJson, null, 2), {

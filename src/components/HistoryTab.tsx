@@ -49,14 +49,14 @@ export default function HistoryTab({
   const [selectedItem, setSelectedItem] = useState<ApiHitRecord | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
-  const [exportingState, setExportingState] = useState<{ id: number; format: 'json' | 'csv' } | null>(null);
+  const [exportingId, setExportingId] = useState<number | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
   const [cleaningStorage, setCleaningStorage] = useState(false);
 
-  const handleExport = async (id: number, format: 'json' | 'csv') => {
-    setExportingState({ id, format });
+  const handleExport = async (id: number) => {
+    setExportingId(id);
     try {
-      const res = await fetch(`/api/history/export?id=${id}&format=${format}`);
+      const res = await fetch(`/api/history/export?id=${id}`);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Gagal mengekspor riwayat');
@@ -65,16 +65,16 @@ export default function HistoryTab({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `riwayat_${id}_base64.${format}`;
+      a.download = `riwayat_${id}_base64.json`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      showToast(`Riwayat #${id} berhasil diekspor ke ${format.toUpperCase()} (Base64)!`, 'success');
+      showToast(`Riwayat #${id} berhasil diekspor ke JSON!`, 'success');
     } catch (err: unknown) {
       showError('Gagal Ekspor', err instanceof Error ? err.message : String(err));
     } finally {
-      setExportingState(null);
+      setExportingId(null);
     }
   };
 
@@ -721,28 +721,17 @@ export default function HistoryTab({
                       </button>
                     ) : null}
 
-                    {/* Tombol Ekspor Single History (JSON / CSV dengan Base64) */}
+                    {/* Tombol Ekspor Single History (JSON) */}
                     <div className="flex items-center gap-1 border-l border-slate-200 pl-1.5 ml-0.5">
-                      <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">Ekspor:</span>
                       <button
                         type="button"
-                        onClick={() => handleExport(item.id, 'json')}
-                        disabled={exportingState?.id === item.id}
+                        onClick={() => handleExport(item.id)}
+                        disabled={exportingId === item.id}
                         className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
-                        title="Ekspor riwayat ini ke JSON (semua gambar berupa format Base64)"
+                        title="Ekspor riwayat ini ke format JSON (Base64)"
                       >
                         <Download className="w-3 h-3 text-indigo-600 shrink-0" />
-                        <span>{exportingState?.id === item.id && exportingState.format === 'json' ? '...' : 'JSON'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleExport(item.id, 'csv')}
-                        disabled={exportingState?.id === item.id}
-                        className="px-2 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
-                        title="Ekspor riwayat ini ke CSV (semua gambar berupa format Base64)"
-                      >
-                        <Download className="w-3 h-3 text-emerald-600 shrink-0" />
-                        <span>{exportingState?.id === item.id && exportingState.format === 'csv' ? '...' : 'CSV'}</span>
+                        <span>{exportingId === item.id ? 'Mengekspor...' : 'Ekspor JSON'}</span>
                       </button>
                     </div>
                   </div>
