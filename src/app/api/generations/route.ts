@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveApiHit, getAppSettings } from '@/lib/db';
+import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { validateImageSize, validateImageQuality } from '@/lib/models';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const settings = getAppSettings();
+  const user = await getAuthUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Harap login terlebih dahulu untuk membuat gambar.' },
+      { status: 401 }
+    );
+  }
+
+  const settings = getUserSettings(user.id);
   const baseUrl = settings.base_url || 'https://api.openai.com/v1';
   const token = settings.api_token || '';
   const defaultModel = settings.generations_model || 'gpt-image-2.5';
@@ -122,6 +131,7 @@ export async function POST(req: NextRequest) {
 
     // Save hit to SQLite
     const historyId = saveApiHit({
+      user_id: user.id,
       type: 'generation',
       endpoint: targetUrl,
       model,
@@ -153,6 +163,7 @@ export async function POST(req: NextRequest) {
       message = 'Koneksi ke gateway AI timeout setelah 120 detik. Server remote sedang antre atau lambat merespons.';
     }
     const historyId = saveApiHit({
+      user_id: user.id,
       type: 'generation',
       endpoint: targetUrl,
       model,

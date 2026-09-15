@@ -15,47 +15,87 @@ import {
   deletePhysicalFile,
   cleanupOrphanedFiles,
 } from '@/lib/storage';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-
-  if (id) {
-    const item = getApiHitById(Number(id));
-    if (!item) {
-      return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404 });
+  try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({
+        items: [],
+        page: 1,
+        limit: 3,
+        total: 0,
+        totalPages: 1,
+        count: 0,
+        summaryCounts: { all: 0, generation: 0, edit: 0 },
+        type: 'all',
+        search: '',
+      });
     }
-    return NextResponse.json({ item });
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      const item = getApiHitById(Number(id), user.id);
+      if (!item) {
+        return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404 });
+      }
+      return NextResponse.json({ item });
+    }
+
+    const type = searchParams.get('type') || 'all';
+    const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+    const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 3, 1), 100);
+    const search = searchParams.get('search')?.trim() || '';
+    const offset = searchParams.has('page') ? (page - 1) * limit : Number(searchParams.get('offset')) || 0;
+
+    const items = getApiHits({ userId: user.id, type, limit, offset, search });
+    const summaryCounts = getHistorySummaryCounts(user.id);
+    const totalCount = getApiHitsCount(type, search, user.id);
+    const totalPages = Math.max(Math.ceil(totalCount / limit), 1);
+
+    return NextResponse.json({
+      items,
+      page,
+      limit,
+      total: totalCount,
+      totalPages,
+      count: totalCount,
+      summaryCounts,
+      type,
+      search,
+    });
+  } catch (err: unknown) {
+    console.error('[history] GET error:', err);
+    return NextResponse.json(
+      {
+        error: 'Terjadi kesalahan saat memuat riwayat: ' + (err instanceof Error ? err.message : String(err)),
+        items: [],
+        page: 1,
+        limit: 3,
+        total: 0,
+        totalPages: 1,
+        count: 0,
+        summaryCounts: { all: 0, generation: 0, edit: 0 },
+        type: 'all',
+        search: '',
+      },
+      { status: 500 }
+    );
   }
-
-  const type = searchParams.get('type') || 'all';
-  const page = Math.max(Number(searchParams.get('page')) || 1, 1);
-  const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 3, 1), 100);
-  const search = searchParams.get('search')?.trim() || '';
-  const offset = searchParams.has('page') ? (page - 1) * limit : Number(searchParams.get('offset')) || 0;
-
-  const items = getApiHits({ type, limit, offset, search });
-  const summaryCounts = getHistorySummaryCounts();
-  const totalCount = getApiHitsCount(type, search);
-  const totalPages = Math.max(Math.ceil(totalCount / limit), 1);
-
-  return NextResponse.json({
-    items,
-    page,
-    limit,
-    total: totalCount,
-    totalPages,
-    count: totalCount,
-    summaryCounts,
-    type,
-    search,
-  });
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Harap login terlebih dahulu' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { id } = body;
 
@@ -63,7 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ID riwayat wajib disertakan' }, { status: 400 });
     }
 
-    const item = getApiHitById(Number(id));
+    const item = getApiHitById(Number(id), user.id);
     if (!item) {
       return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404 });
     }
@@ -125,56 +165,69 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-  const type = searchParams.get('type');
-
-  const parseUrls = (val?: string | null): string[] => {
-    if (!val) return [];
-    if (val.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string');
-      } catch {}
-    }
-    return [val];
-  };
-
-  if (id) {
-    const item = getApiHitById(Number(id));
-    if (!item) {
-      return NextResponse.json({ error: 'Gagal menghapus atau data tidak ditemukan' }, { status: 404 });
+  try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Harap login terlebih dahulu' }, { status: 401 });
     }
 
-    const candidateUrls = [
-      ...parseUrls(item.source_image_url),
-      ...parseUrls(item.result_image_url),
-    ].filter((u) => u.startsWith('/uploads/'));
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const type = searchParams.get('type');
 
-    const deleted = deleteApiHit(Number(id));
-    if (!deleted) {
-      return NextResponse.json({ error: 'Gagal menghapus entri riwayat' }, { status: 500 });
-    }
-
-    // Periksa apakah file fisik masih dipakai oleh entri riwayat lain
-    const remainingActiveUrls = new Set(getAllActiveImageUrls());
-    for (const url of candidateUrls) {
-      if (!remainingActiveUrls.has(url)) {
-        deletePhysicalFile(url);
+    const parseUrls = (val?: string | null): string[] => {
+      if (!val) return [];
+      if (val.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string');
+        } catch {}
       }
+      return [val];
+    };
+
+    if (id) {
+      const item = getApiHitById(Number(id), user.id);
+      if (!item) {
+        return NextResponse.json({ error: 'Gagal menghapus atau data tidak ditemukan' }, { status: 404 });
+      }
+
+      const candidateUrls = [
+        ...parseUrls(item.source_image_url),
+        ...parseUrls(item.result_image_url),
+      ].filter((u) => u.startsWith('/uploads/'));
+
+      const deleted = deleteApiHit(Number(id), user.id);
+      if (!deleted) {
+        return NextResponse.json({ error: 'Gagal menghapus entri riwayat' }, { status: 500 });
+      }
+
+      // Periksa apakah file fisik masih dipakai oleh entri riwayat lain
+      const remainingActiveUrls = new Set(getAllActiveImageUrls());
+      for (const url of candidateUrls) {
+        if (!remainingActiveUrls.has(url)) {
+          deletePhysicalFile(url);
+        }
+      }
+
+      return NextResponse.json({ success: true, message: `Riwayat #${id} beserta file gambar fisiknya berhasil dihapus` });
     }
 
-    return NextResponse.json({ success: true, message: `Riwayat #${id} beserta file gambar fisiknya berhasil dihapus` });
+    const count = clearApiHits(type || undefined, user.id);
+
+    // Bersihkan seluruh file orphaned di folder /uploads/ yang tidak lagi tercatat di database
+    const activeUrls = getAllActiveImageUrls();
+    const cleanupRes = cleanupOrphanedFiles(activeUrls);
+
+    return NextResponse.json({
+      success: true,
+      message: `${count} item riwayat berhasil dibersihkan (${cleanupRes.deletedCount} file gambar fisik terhapus)`,
+    });
+  } catch (err: unknown) {
+    console.error('[history] DELETE error:', err);
+    return NextResponse.json(
+      { error: 'Terjadi kesalahan saat menghapus riwayat: ' + (err instanceof Error ? err.message : String(err)) },
+      { status: 500 }
+    );
   }
-
-  const count = clearApiHits(type || undefined);
-
-  // Bersihkan seluruh file orphaned di folder /uploads/ yang tidak lagi tercatat di database
-  const activeUrls = getAllActiveImageUrls();
-  const cleanupRes = cleanupOrphanedFiles(activeUrls);
-
-  return NextResponse.json({
-    success: true,
-    message: `${count} item riwayat berhasil dibersihkan (${cleanupRes.deletedCount} file gambar fisik terhapus)`,
-  });
 }

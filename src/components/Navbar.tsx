@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Scissors, History, RefreshCw, Settings } from 'lucide-react';
+import { Sparkles, Scissors, History, RefreshCw, Settings, User, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: 'generation' | 'edit' | 'history';
@@ -16,7 +16,13 @@ interface NavbarProps {
   historyCount: number;
   isGenerating?: boolean;
   isEditing?: boolean;
-  onOpenSettings?: () => void;
+  currentUser?: {
+    id: number;
+    username: string;
+    display_name?: string | null;
+  } | null;
+  onOpenSettings?: (tab?: 'image' | 'enhancer' | 'profile') => void;
+  onLogout?: () => void;
 }
 
 export default function Navbar({
@@ -26,7 +32,9 @@ export default function Navbar({
   historyCount,
   isGenerating,
   isEditing,
+  currentUser,
   onOpenSettings,
+  onLogout,
 }: NavbarProps) {
   return (
     <header className="border-b border-slate-200 bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-xs">
@@ -110,7 +118,7 @@ export default function Navbar({
 
             {onOpenSettings && (
               <button
-                onClick={onOpenSettings}
+                onClick={() => onOpenSettings()}
                 className="px-2 sm:px-3 md:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 sm:gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 transition-all cursor-pointer relative"
                 title={config?.isConfigured ? 'Pengaturan API (Terkonfigurasi)' : 'Buka Pengaturan API (Kunci API Belum Diatur)'}
               >
@@ -120,6 +128,33 @@ export default function Navbar({
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="Kunci API belum diisi" />
                 )}
               </button>
+            )}
+
+            {/* Profile / Account Badge & Quick Logout (Desktop only agar navbar mobile tetap ringkas dan lega) */}
+            {currentUser && (
+              <div className="hidden md:flex items-center gap-1 pl-1 border-l border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => onOpenSettings?.('profile')}
+                  className="px-2.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors cursor-pointer"
+                  title="Buka Profil Pengguna"
+                >
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <span className="max-w-[120px] truncate">
+                    {currentUser.display_name || currentUser.username}
+                  </span>
+                </button>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    title="Keluar dari akun (Logout)"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             )}
           </nav>
 

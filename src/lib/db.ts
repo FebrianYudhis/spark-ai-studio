@@ -62,8 +62,40 @@ function initSchema(db: DatabaseSync) {
   } catch {}
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      display_name TEXT,
+      password_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+      api_token TEXT NOT NULL DEFAULT '',
+      generations_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
+      edits_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
+      enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+      enhancer_api_token TEXT NOT NULL DEFAULT '',
+      enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+      enhancer_prompt TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS api_hits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       type TEXT NOT NULL,
       endpoint TEXT NOT NULL,
       model TEXT NOT NULL,
@@ -80,6 +112,7 @@ function initSchema(db: DatabaseSync) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_api_hits_type ON api_hits(type);
+    CREATE INDEX IF NOT EXISTS idx_api_hits_user ON api_hits(user_id);
     CREATE INDEX IF NOT EXISTS idx_api_hits_created_at ON api_hits(created_at DESC);
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -95,6 +128,20 @@ function initSchema(db: DatabaseSync) {
       updated_at TEXT NOT NULL
     );
   `);
+
+  // Migrasi otomatis kolom user_id pada api_hits jika tabel lama belum memiliki user_id
+  try {
+    const tableInfo = db.prepare(`PRAGMA table_info(api_hits)`).all() as Array<{ name: string }>;
+    const hasUserId = tableInfo.some((col) => col.name === 'user_id');
+    if (!hasUserId) {
+      db.exec(`ALTER TABLE api_hits ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE`);
+    }
+  } catch {}
+
+  // Sesuai preferensi user: bersihkan riwayat lama yang tidak memiliki relasi user
+  try {
+    db.exec(`DELETE FROM api_hits WHERE user_id IS NULL`);
+  } catch {}
 
   // Migrasi otomatis untuk menambahkan kolom enhancer jika tabel sudah ada sebelumnya
   const alterMigrations = [
@@ -149,6 +196,7 @@ function initSchema(db: DatabaseSync) {
 
 export interface ApiHitRecord {
   id: number;
+  user_id?: number | null;
   type: 'generation' | 'edit';
   endpoint: string;
   model: string;
@@ -166,6 +214,7 @@ export interface ApiHitRecord {
 }
 
 export interface CreateApiHitInput {
+  user_id?: number | null;
   type: 'generation' | 'edit';
   endpoint: string;
   model: string;
@@ -185,12 +234,12 @@ export function saveApiHit(data: CreateApiHitInput): number {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO api_hits (
-      type, endpoint, model, prompt, size,
+      user_id, type, endpoint, model, prompt, size,
       source_image_name, source_image_size, source_image_url,
       request_payload, status_code, response_payload,
       result_image_url, error_message, created_at
     ) VALUES (
-      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?,
       ?, ?, datetime('now', 'localtime')
@@ -206,6 +255,7 @@ export function saveApiHit(data: CreateApiHitInput): number {
     : JSON.stringify(data.response_payload ?? {});
 
   const result = stmt.run(
+    data.user_id ?? null,
     data.type,
     data.endpoint,
     data.model,
@@ -225,6 +275,7 @@ export function saveApiHit(data: CreateApiHitInput): number {
 }
 
 export function getApiHits(options?: {
+  userId?: number | null;
   type?: string;
   limit?: number;
   offset?: number;
@@ -237,6 +288,15 @@ export function getApiHits(options?: {
 
   const conditions: string[] = [];
   const params: (string | number)[] = [];
+
+  if (options?.userId !== undefined) {
+    if (options.userId === null) {
+      conditions.push(`user_id IS NULL`);
+    } else {
+      conditions.push(`user_id = ?`);
+      params.push(options.userId);
+    }
+  }
 
   if (options?.type && options.type !== 'all') {
     conditions.push(`type = ?`);
@@ -260,15 +320,25 @@ export function getApiHits(options?: {
   return stmt.all(...params, limit, offset) as unknown as ApiHitRecord[];
 }
 
-export function getApiHitById(id: number): ApiHitRecord | null {
+export function getApiHitById(id: number, userId?: number | null): ApiHitRecord | null {
   const db = getDb();
+  if (userId !== undefined && userId !== null) {
+    const stmt = db.prepare(`SELECT * FROM api_hits WHERE id = ? AND user_id = ?`);
+    const row = stmt.get(id, userId);
+    return (row as unknown as ApiHitRecord) ?? null;
+  }
   const stmt = db.prepare(`SELECT * FROM api_hits WHERE id = ?`);
   const row = stmt.get(id);
   return (row as unknown as ApiHitRecord) ?? null;
 }
 
-export function deleteApiHit(id: number): boolean {
+export function deleteApiHit(id: number, userId?: number | null): boolean {
   const db = getDb();
+  if (userId !== undefined && userId !== null) {
+    const stmt = db.prepare(`DELETE FROM api_hits WHERE id = ? AND user_id = ?`);
+    const res = stmt.run(id, userId);
+    return res.changes > 0;
+  }
   const stmt = db.prepare(`DELETE FROM api_hits WHERE id = ?`);
   const res = stmt.run(id);
   return res.changes > 0;
@@ -281,22 +351,36 @@ export function updateApiHitResultImage(id: number, resultImageUrl: string): boo
   return res.changes > 0;
 }
 
-export function clearApiHits(type?: string): number {
-  const db = getDb();
-  if (type && type !== 'all') {
-    const stmt = db.prepare(`DELETE FROM api_hits WHERE type = ?`);
-    const res = stmt.run(type);
-    return Number(res.changes);
-  }
-  const stmt = db.prepare(`DELETE FROM api_hits`);
-  const res = stmt.run();
-  return Number(res.changes);
-}
-
-export function getApiHitsCount(type?: string, search?: string): number {
+export function clearApiHits(type?: string, userId?: number | null): number {
   const db = getDb();
   const conditions: string[] = [];
   const params: (string | number)[] = [];
+
+  if (userId !== undefined && userId !== null) {
+    conditions.push(`user_id = ?`);
+    params.push(userId);
+  }
+
+  if (type && type !== 'all') {
+    conditions.push(`type = ?`);
+    params.push(type);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`DELETE FROM api_hits ${whereClause}`);
+  const res = stmt.run(...params);
+  return Number(res.changes);
+}
+
+export function getApiHitsCount(type?: string, search?: string, userId?: number | null): number {
+  const db = getDb();
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (userId !== undefined && userId !== null) {
+    conditions.push(`user_id = ?`);
+    params.push(userId);
+  }
 
   if (type && type !== 'all') {
     conditions.push(`type = ?`);
@@ -315,20 +399,28 @@ export function getApiHitsCount(type?: string, search?: string): number {
   return Number(row?.count ?? 0);
 }
 
-export function getHistorySummaryCounts(): { all: number; generation: number; edit: number } {
+export function getHistorySummaryCounts(userId?: number | null): { all: number; generation: number; edit: number } {
   const db = getDb();
+  if (userId !== undefined && userId !== null) {
+    const allStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE user_id = ?`);
+    const genStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE user_id = ? AND type = 'generation'`);
+    const editStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE user_id = ? AND type = 'edit'`);
+
+    return {
+      all: Number((allStmt.get(userId) as { count: number } | undefined)?.count ?? 0),
+      generation: Number((genStmt.get(userId) as { count: number } | undefined)?.count ?? 0),
+      edit: Number((editStmt.get(userId) as { count: number } | undefined)?.count ?? 0),
+    };
+  }
+
   const allStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits`);
   const genStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE type = 'generation'`);
   const editStmt = db.prepare(`SELECT COUNT(*) as count FROM api_hits WHERE type = 'edit'`);
 
-  const allRow = allStmt.get() as { count: number } | undefined;
-  const genRow = genStmt.get() as { count: number } | undefined;
-  const editRow = editStmt.get() as { count: number } | undefined;
-
   return {
-    all: Number(allRow?.count ?? 0),
-    generation: Number(genRow?.count ?? 0),
-    edit: Number(editRow?.count ?? 0),
+    all: Number((allStmt.get() as { count: number } | undefined)?.count ?? 0),
+    generation: Number((genStmt.get() as { count: number } | undefined)?.count ?? 0),
+    edit: Number((editStmt.get() as { count: number } | undefined)?.count ?? 0),
   };
 }
 
@@ -461,4 +553,207 @@ export function updateAppSettings(input: {
   );
 
   return getAppSettings();
+}
+
+// ==========================================
+// USER & AUTHENTICATION FUNCTIONS
+// ==========================================
+
+export interface UserRecord {
+  id: number;
+  username: string;
+  display_name?: string | null;
+  password_hash: string;
+  salt: string;
+  created_at: string;
+}
+
+export function createUser(input: {
+  username: string;
+  display_name?: string;
+  password_hash: string;
+  salt: string;
+}): UserRecord {
+  const db = getDb();
+  const stmt = db.prepare(`
+    INSERT INTO users (username, display_name, password_hash, salt, created_at)
+    VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+  `);
+  const res = stmt.run(
+    input.username.toLowerCase().trim(),
+    input.display_name?.trim() || input.username.trim(),
+    input.password_hash,
+    input.salt
+  );
+  const userId = Number(res.lastInsertRowid);
+
+  // Buat default user_settings untuk user baru (Private Studio)
+  const defaultApp = getAppSettings();
+  db.prepare(`
+    INSERT INTO user_settings (
+      user_id, base_url, api_token, generations_model, edits_model,
+      enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
+      updated_at
+    ) VALUES (
+      ?, ?, '', ?, ?,
+      ?, '', ?, ?,
+      datetime('now', 'localtime')
+    )
+  `).run(
+    userId,
+    defaultApp.base_url || 'https://api.openai.com/v1',
+    defaultApp.generations_model || 'gpt-image-2.5',
+    defaultApp.edits_model || 'gpt-image-2.5',
+    defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
+    defaultApp.enhancer_model || 'gpt-4o-mini',
+    defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT
+  );
+
+  return getUserById(userId)!;
+}
+
+export function getUserByUsername(username: string): UserRecord | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM users WHERE username = ?`).get(username.toLowerCase().trim());
+  return (row as unknown as UserRecord) ?? null;
+}
+
+export function getUserById(id: number): UserRecord | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
+  return (row as unknown as UserRecord) ?? null;
+}
+
+export function getUsersCount(): number {
+  const db = getDb();
+  const row = db.prepare(`SELECT COUNT(*) as count FROM users`).get() as { count: number } | undefined;
+  return Number(row?.count ?? 0);
+}
+
+// ==========================================
+// SESSION FUNCTIONS
+// ==========================================
+
+export function createSession(sessionId: string, userId: number, daysValid: number = 30): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO sessions (id, user_id, expires_at, created_at)
+    VALUES (?, ?, datetime('now', '+${daysValid} days', 'localtime'), datetime('now', 'localtime'))
+  `).run(sessionId, userId);
+}
+
+export function deleteSession(sessionId: string): void {
+  const db = getDb();
+  db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+}
+
+export function deleteUserSessions(userId: number): void {
+  const db = getDb();
+  db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
+}
+
+// ==========================================
+// USER SETTINGS (PRIVATE STUDIO)
+// ==========================================
+
+export interface UserSettings {
+  user_id: number;
+  base_url: string;
+  api_token: string;
+  generations_model: string;
+  edits_model: string;
+  enhancer_base_url: string;
+  enhancer_api_token: string;
+  enhancer_model: string;
+  enhancer_prompt: string;
+  updated_at: string;
+}
+
+export function getUserSettings(userId: number): UserSettings {
+  const db = getDb();
+  let row = db.prepare(`SELECT * FROM user_settings WHERE user_id = ?`).get(userId) as unknown as UserSettings | undefined;
+
+  if (!row) {
+    const defaultApp = getAppSettings();
+    db.prepare(`
+      INSERT OR IGNORE INTO user_settings (
+        user_id, base_url, api_token, generations_model, edits_model,
+        enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
+        updated_at
+      ) VALUES (
+        ?, ?, '', ?, ?,
+        ?, '', ?, ?,
+        datetime('now', 'localtime')
+      )
+    `).run(
+      userId,
+      defaultApp.base_url || 'https://api.openai.com/v1',
+      defaultApp.generations_model || 'gpt-image-2.5',
+      defaultApp.edits_model || 'gpt-image-2.5',
+      defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
+      defaultApp.enhancer_model || 'gpt-4o-mini',
+      defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT
+    );
+    row = db.prepare(`SELECT * FROM user_settings WHERE user_id = ?`).get(userId) as unknown as UserSettings;
+  }
+
+  return {
+    ...row,
+    enhancer_base_url: row.enhancer_base_url || 'https://api.openai.com/v1',
+    enhancer_api_token: row.enhancer_api_token || '',
+    enhancer_model: row.enhancer_model || 'gpt-4o-mini',
+    enhancer_prompt:
+      row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
+        ? row.enhancer_prompt
+        : DEFAULT_ENHANCER_PROMPT,
+  };
+}
+
+export function updateUserSettings(userId: number, input: {
+  base_url?: string;
+  api_token?: string;
+  generations_model?: string;
+  edits_model?: string;
+  enhancer_base_url?: string;
+  enhancer_api_token?: string;
+  enhancer_model?: string;
+  enhancer_prompt?: string;
+}): UserSettings {
+  const current = getUserSettings(userId);
+  const nextBaseUrl = input.base_url !== undefined ? input.base_url.trim() : current.base_url;
+  const nextApiToken = input.api_token !== undefined ? input.api_token.trim() : current.api_token;
+  const nextGenModel = input.generations_model !== undefined ? input.generations_model.trim() : current.generations_model;
+  const nextEditModel = input.edits_model !== undefined ? input.edits_model.trim() : current.edits_model;
+  const nextEnhancerBaseUrl = input.enhancer_base_url !== undefined ? input.enhancer_base_url.trim() : current.enhancer_base_url;
+  const nextEnhancerApiToken = input.enhancer_api_token !== undefined ? input.enhancer_api_token.trim() : current.enhancer_api_token;
+  const nextEnhancerModel = input.enhancer_model !== undefined ? input.enhancer_model.trim() : current.enhancer_model;
+  const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
+
+  const db = getDb();
+  db.prepare(`
+    UPDATE user_settings
+    SET
+      base_url = ?,
+      api_token = ?,
+      generations_model = ?,
+      edits_model = ?,
+      enhancer_base_url = ?,
+      enhancer_api_token = ?,
+      enhancer_model = ?,
+      enhancer_prompt = ?,
+      updated_at = datetime('now', 'localtime')
+    WHERE user_id = ?
+  `).run(
+    nextBaseUrl,
+    nextApiToken,
+    nextGenModel,
+    nextEditModel,
+    nextEnhancerBaseUrl,
+    nextEnhancerApiToken,
+    nextEnhancerModel,
+    nextEnhancerPrompt,
+    userId
+  );
+
+  return getUserSettings(userId);
 }

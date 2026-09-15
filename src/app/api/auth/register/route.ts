@@ -1,0 +1,80 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { createUser, getUserByUsername } from '@/lib/db';
+import { hashPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS } from '@/lib/auth';
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const username = String(body.username || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const displayName = String(body.displayName || body.display_name || '').trim();
+
+    if (!username || username.length < 3) {
+      return NextResponse.json(
+        { error: 'Username minimal 3 karakter.' },
+        { status: 400 }
+      );
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return NextResponse.json(
+        { error: 'Username hanya boleh huruf, angka, tanda minus (-), atau garis bawah (_).' },
+        { status: 400 }
+      );
+    }
+
+    if (!password || password.length < 4) {
+      return NextResponse.json(
+        { error: 'Password minimal 4 karakter.' },
+        { status: 400 }
+      );
+    }
+
+    const existing = getUserByUsername(username);
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Username ini sudah digunakan, silakan pilih username lain.' },
+        { status: 400 }
+      );
+    }
+
+    const { hash, salt } = hashPassword(password);
+    const user = createUser({
+      username,
+      display_name: displayName || username,
+      password_hash: hash,
+      salt,
+    });
+
+    // Otomatis buat sesi & login
+    const sessionId = generateSessionId();
+    const cookieStore = await cookies();
+    const { createSession } = await import('@/lib/db');
+    createSession(sessionId, user.id, SESSION_DURATION_DAYS);
+
+    cookieStore.set(SESSION_COOKIE_NAME, sessionId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60,
+    });
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        display_name: user.display_name,
+        created_at: user.created_at,
+      },
+    });
+  } catch (err: unknown) {
+    console.error('[auth/register] error:', err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Gagal mendaftar akun baru.' },
+      { status: 500 }
+    );
+  }
+}

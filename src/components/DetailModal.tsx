@@ -49,7 +49,7 @@ export default function DetailModal({
     try {
       const res = await fetch(`/api/history/export?id=${item.id}`);
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ error: 'Gagal mengekspor riwayat' }));
         throw new Error(data.error || 'Gagal mengekspor riwayat');
       }
       const blob = await res.blob();
@@ -78,7 +78,7 @@ export default function DetailModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: item.id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, error: 'Respon server tidak valid' }));
       if (res.ok && data.success && data.resultImageUrl) {
         setLocalResultImageUrl(data.resultImageUrl);
         if (onItemUpdated) {

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAppSettings, DEFAULT_ENHANCER_PROMPT } from '@/lib/db';
+import { getUserSettings, DEFAULT_ENHANCER_PROMPT } from '@/lib/db';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Harap login terlebih dahulu untuk menggunakan Prompt Enhancer.' },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
 
@@ -15,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const settings = getAppSettings();
+    const settings = getUserSettings(user.id);
     const enhancerToken = settings.enhancer_api_token?.trim();
 
     // Sesuai aturan: user harus mengisi API Token Enhancer sendiri tanpa fallback

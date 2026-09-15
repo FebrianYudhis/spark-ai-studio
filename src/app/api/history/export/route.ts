@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getApiHitById } from '@/lib/db';
 import { convertImageToBase64DataUrl } from '@/lib/storage';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,11 @@ function sanitizePayloadForExport(payload: unknown, fieldType: 'request' | 'resp
 
 export async function GET(request: NextRequest) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Harap login terlebih dahulu' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get('id');
 
@@ -60,7 +66,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Parameter id riwayat wajib disertakan' }, { status: 400 });
     }
 
-    const record = getApiHitById(Number(idParam));
+    const record = getApiHitById(Number(idParam), user.id);
     if (!record) {
       return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404 });
     }

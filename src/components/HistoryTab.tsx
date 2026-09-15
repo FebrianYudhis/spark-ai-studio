@@ -70,7 +70,7 @@ export default function HistoryTab({
     try {
       const res = await fetch(`/api/history/export?id=${id}`);
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ error: 'Gagal mengekspor riwayat' }));
         throw new Error(data.error || 'Gagal mengekspor riwayat');
       }
       const blob = await res.blob();
@@ -118,7 +118,7 @@ export default function HistoryTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, error: 'Respon server tidak valid' }));
       if (res.ok && data.success && data.resultImageUrl) {
         setItems((prev) =>
           prev.map((it) => (it.id === id ? { ...it, result_image_url: data.resultImageUrl } : it))
@@ -141,8 +141,8 @@ export default function HistoryTab({
     try {
       const res = await fetch('/api/storage');
       if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.stats) {
+        const data = await res.json().catch(() => null);
+        if (data && data.success && data.stats) {
           setStorageStats(data.stats);
         }
       }
@@ -165,7 +165,18 @@ export default function HistoryTab({
         fetch(`/api/history?${params.toString()}`),
         fetchStorageStats(),
       ]);
-      const data = await res.json();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        console.error('Failed to fetch history, HTTP status:', res.status, errData);
+        setItems([]);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        console.error('History response is not valid JSON');
+        setItems([]);
+        return;
+      }
       setItems(data.items || []);
       setTotalCount(data.total ?? 0);
       setTotalPages(data.totalPages ?? 1);
@@ -269,7 +280,7 @@ export default function HistoryTab({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'clean_orphaned' }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ success: false, error: 'Respon server tidak valid' }));
         if (res.ok && data.success) {
           showToast(data.message, 'success');
           fetchStorageStats();
