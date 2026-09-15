@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllActiveImageUrls } from '@/lib/db';
 import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,11 @@ function formatBytes(bytes: number): string {
 
 export async function GET() {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401 });
+    }
+
     const activeUrls = getAllActiveImageUrls();
     const stats = getStorageStats(activeUrls);
 
@@ -36,6 +42,11 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'clean_orphaned';
 

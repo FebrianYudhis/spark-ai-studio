@@ -202,7 +202,9 @@ export default function GenerationsTab({
   const handleScale = (factor: number) => {
     const newSize = scaleImageDimensions(size, factor);
     setSize(newSize);
-    setSizePreset(getPresetIdFromSize(newSize));
+    if (sizePreset === 'custom') {
+      setSizePreset(getPresetIdFromSize(newSize));
+    }
   };
 
   const sizeValidation = validateImageSize(size);

@@ -108,7 +108,7 @@ export default function Navbar({
               <History className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">Riwayat</span>
               {historyCount > 0 && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                   activeTab === 'history' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
                 }`}>
                   {historyCount}

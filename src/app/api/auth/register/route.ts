@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createUser, getUserByUsername } from '@/lib/db';
+import { createUser, getUserByUsername, createSession } from '@/lib/db';
 import { hashPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -50,7 +50,6 @@ export async function POST(req: Request) {
     // Otomatis buat sesi & login
     const sessionId = generateSessionId();
     const cookieStore = await cookies();
-    const { createSession } = await import('@/lib/db');
     createSession(sessionId, user.id, SESSION_DURATION_DAYS);
 
     cookieStore.set(SESSION_COOKIE_NAME, sessionId, {

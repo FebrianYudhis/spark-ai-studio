@@ -479,7 +479,9 @@ export default function EditsTab({
   const handleScale = (factor: number) => {
     const newSize = scaleImageDimensions(size, factor);
     setSize(newSize);
-    setSizePreset(getPresetIdFromSize(newSize));
+    if (sizePreset === 'custom') {
+      setSizePreset(getPresetIdFromSize(newSize));
+    }
   };
 
   const sizeValidation = validateImageSize(size);
@@ -593,12 +595,14 @@ export default function EditsTab({
         const msg = data.errorMessage || data.error || `HTTP ${res.status}: Gagal memproses edit gambar`;
         setError(msg);
         showToast(msg, 'error');
+        if (data.historyId || data.requestSummary) {
+          setResult(data);
+        }
       } else {
         showToast('Gambar berhasil diedit!', 'success');
+        setResult(data);
+        onSuccess();
       }
-
-      setResult(data);
-      onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Koneksi ke server gagal';
       setError(msg);
@@ -853,7 +857,7 @@ export default function EditsTab({
                           />
                         </div>
                         <div className="flex-1 min-w-0 pr-4">
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             image {idx + 2}
                           </span>
                           <p className="text-[11px] font-medium text-slate-800 truncate mt-0.5" title={img.file.name}>

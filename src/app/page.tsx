@@ -148,6 +148,15 @@ export default function Home() {
   }, [refreshTrigger, currentUser, fetchConfigAndHistoryCount]);
 
   const handleLogout = async () => {
+    const confirmed = await showConfirm({
+      title: 'Keluar dari Akun?',
+      text: 'Anda akan keluar dari sesi Private Studio saat ini.',
+      confirmButtonText: 'Ya, Keluar',
+      cancelButtonText: 'Batal',
+      isDanger: true,
+    });
+    if (!confirmed) return;
+
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {

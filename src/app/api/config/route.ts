@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAppSettings, updateAppSettings, getUserSettings, updateUserSettings } from '@/lib/db';
+import { getUserSettings, updateUserSettings } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,14 @@ const NO_CACHE_HEADERS = {
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser();
-  const settings = user ? getUserSettings(user.id) : getAppSettings();
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Harap login terlebih dahulu.' },
+      { status: 401, headers: NO_CACHE_HEADERS }
+    );
+  }
+
+  const settings = getUserSettings(user.id);
   const token = settings.api_token || '';
   const enhancerToken = settings.enhancer_api_token || '';
 
@@ -24,7 +31,7 @@ export async function GET(req: NextRequest) {
       app: 'spark-ai-studio',
       type: 'settings_export',
       version: 1,
-      user: user ? { id: user.id, username: user.username } : null,
+      user: { id: user.id, username: user.username },
       exported_at: new Date().toISOString(),
       settings: {
         base_url: settings.base_url,
@@ -37,7 +44,7 @@ export async function GET(req: NextRequest) {
         enhancer_prompt: settings.enhancer_prompt,
       },
     };
-    const userPrefix = user ? `${user.username}_` : '';
+    const userPrefix = `${user.username}_`;
     const filename = `spark_ai_studio_settings_${userPrefix}${new Date().toISOString().slice(0, 10)}.json`;
     return new NextResponse(JSON.stringify(exportData, null, 2), {
       status: 200,
@@ -94,6 +101,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Harap login terlebih dahulu.' },
+        { status: 401, headers: NO_CACHE_HEADERS }
+      );
+    }
+
     const body = await req.json();
     const source = (body && typeof body.settings === 'object' && body.settings !== null)
       ? body.settings
@@ -119,9 +133,7 @@ export async function POST(req: NextRequest) {
       enhancer_prompt: enhancerPrompt,
     };
 
-    const updated = user
-      ? updateUserSettings(user.id, payload)
-      : updateAppSettings(payload);
+    const updated = updateUserSettings(user.id, payload);
 
     const isConfigured = Boolean(
       updated.api_token &&

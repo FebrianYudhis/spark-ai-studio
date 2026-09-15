@@ -164,6 +164,59 @@ function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise<{ buf
 }
 
 /**
+ * Memvalidasi apakah buffer adalah gambar yang valid berdasarkan magic bytes file format
+ */
+export function isValidImageBuffer(buffer: Buffer): { valid: boolean; ext: string } {
+  if (!buffer || buffer.length < 8) return { valid: false, ext: 'png' };
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4E &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0D &&
+    buffer[5] === 0x0A &&
+    buffer[6] === 0x1A &&
+    buffer[7] === 0x0A
+  ) {
+    return { valid: true, ext: 'png' };
+  }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return { valid: true, ext: 'jpg' };
+  }
+
+  // GIF: GIF87a or GIF89a (47 49 46 38)
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
+    return { valid: true, ext: 'gif' };
+  }
+
+  // WEBP: RIFF....WEBP (52 49 46 46 .... 57 45 42 50)
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return { valid: true, ext: 'webp' };
+  }
+
+  // BMP: BM (42 4D)
+  if (buffer[0] === 0x42 && buffer[1] === 0x4D) {
+    return { valid: true, ext: 'bmp' };
+  }
+
+  return { valid: false, ext: 'png' };
+}
+
+/**
  * Menyimpan gambar (baik remote URL maupun base64) ke disk lokal di public/uploads/.
  * HANYA mengembalikan path lokal (contoh: '/uploads/result_123.png') jika berhasil disimpan.
  * Jika gagal disimpan, mengembalikan undefined (link asli tetap aman di response payload).
@@ -181,9 +234,14 @@ export async function saveRemoteOrBase64Image(
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 7);
 
-    // Jika sudah merupakan path lokal uploads, gunakan langsung
+    // Jika sudah merupakan path lokal uploads, verifikasi keberadaan file fisik di disk
     if (urlOrBase64.startsWith('/uploads/')) {
-      return urlOrBase64;
+      const cleanRel = urlOrBase64.replace(/^\//, '');
+      const localPath = path.join(process.cwd(), 'public', cleanRel);
+      if (fs.existsSync(localPath)) {
+        return urlOrBase64;
+      }
+      return undefined;
     }
 
     const isDataUri = urlOrBase64.startsWith('data:image/');
@@ -197,11 +255,14 @@ export async function saveRemoteOrBase64Image(
         return undefined;
       }
 
-      let ext = 'png';
-      const ct = downloaded.contentType.toLowerCase();
-      if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpg';
-      else if (ct.includes('webp')) ext = 'webp';
-      else if (ct.includes('gif')) ext = 'gif';
+      const magicCheck = isValidImageBuffer(downloaded.buffer);
+      let ext = magicCheck.valid ? magicCheck.ext : 'png';
+      if (!magicCheck.valid) {
+        const ct = downloaded.contentType.toLowerCase();
+        if (ct.includes('jpeg') || ct.includes('jpg')) ext = 'jpg';
+        else if (ct.includes('webp')) ext = 'webp';
+        else if (ct.includes('gif')) ext = 'gif';
+      }
 
       const filename = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
       const filePath = path.join(UPLOAD_DIR, filename);
@@ -218,7 +279,13 @@ export async function saveRemoteOrBase64Image(
         return undefined;
       }
 
-      let ext = 'png';
+      const magicCheck = isValidImageBuffer(buffer);
+      if (!magicCheck.valid && !isDataUri) {
+        console.warn('[storage] Decoded base64 buffer does not contain valid image magic bytes');
+        return undefined;
+      }
+
+      let ext = magicCheck.valid ? magicCheck.ext : 'png';
       const match = urlOrBase64.match(/^data:image\/([a-zA-Z+.-]+);base64,/);
       if (match && match[1]) {
         ext = match[1].replace('jpeg', 'jpg');
