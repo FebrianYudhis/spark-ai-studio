@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { History, Sparkles, Scissors, Trash2, RefreshCw, Eye, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreVertical } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
@@ -52,6 +52,18 @@ export default function HistoryTab({
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
   const [cleaningStorage, setCleaningStorage] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+
+  // Menutup menu aksi riwayat saat klik di luar area menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.history-action-menu')) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const handleExport = async (id: number) => {
     setExportingId(id);
@@ -488,13 +500,133 @@ export default function HistoryTab({
                     <span className="text-[11px] sm:text-xs text-slate-500">
                       {formatSafeDate(item.created_at)}
                     </span>
-                    <button
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                      title="Hapus baris ini"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+
+                    <div className="relative history-action-menu">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === item.id ? null : item.id);
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                          openMenuId === item.id
+                            ? isGen
+                              ? 'bg-purple-100 text-purple-800 border-purple-300 shadow-xs'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100 border-slate-200 bg-white shadow-2xs'
+                        }`}
+                        title="Menu Aksi Riwayat"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuId === item.id && (
+                        <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs font-sans">
+                          {isGen ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                onSelectPrompt(item.prompt, item.model, 'generation');
+                              }}
+                              className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                              <span>Gunakan Ulang Prompt</span>
+                            </button>
+                          ) : onReuseEditSession ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                const sourceUrls = parseUrls(item.source_image_url);
+                                let parsedReq: Record<string, unknown> | null = null;
+                                try {
+                                  if (item.request_payload) parsedReq = JSON.parse(item.request_payload);
+                                } catch {}
+                                onReuseEditSession({
+                                  prompt: item.prompt,
+                                  primaryUrl: sourceUrls[0] || '',
+                                  additionalUrls: sourceUrls.slice(1),
+                                  model: item.model,
+                                  size: item.size || (parsedReq?.size as string | undefined),
+                                  quality: parsedReq?.quality as ImageQuality | undefined,
+                                  inputFidelity: parsedReq?.input_fidelity as InputFidelity | undefined,
+                                });
+                              }}
+                              className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                              <span>Ulangi Proses Edit</span>
+                            </button>
+                          ) : null}
+
+                          {(() => {
+                            const resultUrls = parseUrls(item.result_image_url);
+                            const sourceUrls = parseUrls(item.source_image_url);
+                            const imgUrl = resultUrls[0] || sourceUrls[0] || '';
+                            if (!onUseAsEditBase || !imgUrl) return null;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  onUseAsEditBase(imgUrl);
+                                }}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Scissors className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>Edit Gambar</span>
+                              </button>
+                            );
+                          })()}
+
+                          {(() => {
+                            const resultUrls = parseUrls(item.result_image_url);
+                            const downloadUrl = resultUrls[0];
+                            if (!downloadUrl) return null;
+                            return (
+                              <a
+                                href={downloadUrl}
+                                download={`ai_${isGen ? 'gen' : 'edit'}_${item.id}.png`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => setOpenMenuId(null)}
+                                className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                <span>Unduh Hasil</span>
+                              </a>
+                            );
+                          })()}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleExport(item.id);
+                            }}
+                            disabled={exportingId === item.id}
+                            className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span>{exportingId === item.id ? 'Mengekspor...' : 'Ekspor JSON'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              handleDeleteItem(item.id);
+                            }}
+                            className="w-full px-3 py-2 text-left text-rose-600 hover:text-rose-800 hover:bg-rose-50 font-medium flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                            <span>Hapus Riwayat</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -564,32 +696,18 @@ export default function HistoryTab({
                         const genImgUrl = genResultUrls[0];
                         return genImgUrl ? (
                           <div className="w-full max-w-[160px] flex flex-col items-center">
-                            <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedItem(item)}
+                              className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs cursor-pointer block text-left"
+                              title="Klik untuk melihat detail lengkap"
+                            >
                               <img
                                 src={genImgUrl}
                                 alt="Generated Image"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
-                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => setSelectedItem(item)}
-                                  className="p-1.5 bg-white/80 hover:bg-white rounded-lg text-slate-800 shadow-sm"
-                                  title="Lihat detail"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                                <a
-                                  href={genImgUrl}
-                                  download={`ai_gen_${item.id}.png`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 bg-purple-600 hover:bg-purple-500 rounded-lg text-white shadow-sm"
-                                  title="Unduh"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </a>
-                              </div>
-                            </div>
+                            </button>
                             <span className="text-[11px] text-slate-500 mt-1.5 font-medium">Hasil Generation</span>
                           </div>
                         ) : (
@@ -619,18 +737,23 @@ export default function HistoryTab({
                           <div className="w-full flex items-center justify-center gap-3">
                             {sourceUrls.length > 0 && (
                               <div className="flex-1 flex flex-col items-center">
-                                <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-xs group">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedItem(item)}
+                                  className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-xs group cursor-pointer block text-left"
+                                  title="Klik untuk melihat detail lengkap"
+                                >
                                   <img
                                     src={sourceUrls[0]}
                                     alt="Source Input"
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                   />
                                   {sourceUrls.length > 1 && (
                                     <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-slate-900/80 text-white rounded text-[10px] font-mono font-bold">
                                       {sourceUrls.length} file
                                     </span>
                                   )}
-                                </div>
+                                </button>
                                 <span className="text-[10px] text-slate-600 mt-1 truncate max-w-[80px] font-medium">
                                   {sourceUrls.length > 1 ? `${sourceUrls.length} Asli` : 'Asli'}
                                 </span>
@@ -639,26 +762,23 @@ export default function HistoryTab({
 
                             {resultUrls.length > 0 ? (
                               <div className="flex-1 flex flex-col items-center">
-                                <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedItem(item)}
+                                  className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group shadow-xs cursor-pointer block text-left"
+                                  title="Klik untuk melihat detail lengkap"
+                                >
                                   <img
                                     src={resultUrls[0]}
                                     alt="Edited Result"
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                   />
                                   {resultUrls.length > 1 && (
                                     <span className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-emerald-700/90 text-white rounded text-[10px] font-mono font-bold">
                                       {resultUrls.length} hasil
                                     </span>
                                   )}
-                                  <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <button
-                                      onClick={() => setSelectedItem(item)}
-                                      className="p-1.5 bg-white/80 hover:bg-white rounded-lg text-slate-800 shadow-sm cursor-pointer"
-                                    >
-                                      <Eye className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </div>
+                                </button>
                                 <span className="text-[10px] text-emerald-700 mt-1 truncate max-w-[80px] font-semibold">
                                   {resultUrls.length > 1 ? `${resultUrls.length} Edit` : 'Hasil Edit'}
                                 </span>
@@ -683,73 +803,6 @@ export default function HistoryTab({
                       })()
                     )}
                   </div>
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 flex-wrap">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {isGen ? (
-                      <button
-                        onClick={() => onSelectPrompt(item.prompt, item.model, 'generation')}
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                        Gunakan Ulang Prompt
-                      </button>
-                    ) : onReuseEditSession ? (
-                      <button
-                        onClick={() => {
-                          const sourceUrls = parseUrls(item.source_image_url);
-                          let parsedReq: Record<string, unknown> | null = null;
-                          try {
-                            if (item.request_payload) parsedReq = JSON.parse(item.request_payload);
-                          } catch {}
-                          onReuseEditSession({
-                            prompt: item.prompt,
-                            primaryUrl: sourceUrls[0] || '',
-                            additionalUrls: sourceUrls.slice(1),
-                            model: item.model,
-                            size: item.size || (parsedReq?.size as string | undefined),
-                            quality: parsedReq?.quality as ImageQuality | undefined,
-                            inputFidelity: parsedReq?.input_fidelity as InputFidelity | undefined,
-                          });
-                        }}
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-purple-200 cursor-pointer"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                        Ulangi Proses
-                      </button>
-                    ) : null}
-
-                    {/* Tombol Ekspor Single History (JSON) */}
-                    <div className="flex items-center gap-1 border-l border-slate-200 pl-1.5 ml-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleExport(item.id)}
-                        disabled={exportingId === item.id}
-                        className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 hover:border-indigo-300 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
-                        title="Ekspor riwayat ini ke format JSON (Base64)"
-                      >
-                        <Download className="w-3 h-3 text-indigo-600 shrink-0" />
-                        <span>{exportingId === item.id ? 'Mengekspor...' : 'Ekspor JSON'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      const resultUrls = parseUrls(item.result_image_url);
-                      const sourceUrls = parseUrls(item.source_image_url);
-                      const imgUrl = resultUrls[0] || sourceUrls[0] || '';
-                      if (onUseAsEditBase && imgUrl) {
-                        onUseAsEditBase(imgUrl);
-                      }
-                    }}
-                    className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-emerald-200 cursor-pointer sm:ml-auto"
-                  >
-                    <Scissors className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    Edit Gambar
-                  </button>
                 </div>
               </div>
             );
@@ -865,18 +918,6 @@ export default function HistoryTab({
         onItemUpdated={(updated) => {
           setSelectedItem(updated);
           setItems((prev) => prev.map((it) => (it.id === updated.id ? updated : it)));
-        }}
-        onReusePrompt={(p, m, t) => {
-          onSelectPrompt(p, m, t);
-          setSelectedItem(null);
-        }}
-        onReuseEditSession={(session) => {
-          if (onReuseEditSession) onReuseEditSession(session);
-          setSelectedItem(null);
-        }}
-        onUseAsEditBase={(img) => {
-          if (onUseAsEditBase) onUseAsEditBase(img);
-          setSelectedItem(null);
         }}
       />
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Wand2, Loader2, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw } from 'lucide-react';
+import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, X, ExternalLink } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import {
   AVAILABLE_MODELS,
@@ -28,6 +28,7 @@ interface GenerationsTabProps {
   onLoadingChange?: (loading: boolean) => void;
   onOpenSettings?: () => void;
   onModelChange?: (model: AvailableModel) => void;
+  onUseAsEditBase?: (imageUrl?: string) => void;
 }
 
 const SAMPLE_PROMPTS = [
@@ -46,6 +47,7 @@ export default function GenerationsTab({
   onLoadingChange,
   onOpenSettings,
   onModelChange,
+  onUseAsEditBase,
 }: GenerationsTabProps) {
   const [model, setModel] = useState<AvailableModel>(
     defaultModel && isValidModel(defaultModel) ? defaultModel : DEFAULT_MODEL
@@ -90,6 +92,32 @@ export default function GenerationsTab({
   const [showJson, setShowJson] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isRedownloading, setIsRedownloading] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Menutup menu aksi saat klik di luar menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.gen-action-menu')) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Menutup modal preview saat tombol Escape ditekan
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsPreviewOpen(false);
+      }
+    };
+    if (isPreviewOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewOpen]);
 
   const handleRedownload = async () => {
     if (!result?.historyId) return;
@@ -203,6 +231,8 @@ export default function GenerationsTab({
     setLoading(true);
     setError(null);
     setResult(null);
+    setIsMenuOpen(false);
+    setIsPreviewOpen(false);
 
     try {
       const res = await fetch('/api/generations', {
@@ -676,45 +706,107 @@ export default function GenerationsTab({
               </div>
             ) : result?.resultImageUrl ? (
               <div className="flex-1 flex flex-col space-y-4">
-                <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center group">
-                  <img
-                    src={result.resultImageUrl}
-                    alt="AI Generated result"
-                    className="max-h-full max-w-full object-contain"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <a
-                    href={result.resultImageUrl}
-                    download={`ai_gen_${result?.historyId || 'result'}.png`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                  >
-                    <Download className="w-4 h-4" /> Unduh Gambar
-                  </a>
-                  {result.historyId && (
+                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs flex flex-col">
+                  <div className="relative aspect-square w-full bg-slate-100 flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={handleRedownload}
-                      disabled={isRedownloading}
-                      className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
-                      title="Ambil ulang file gambar dari respons API ke server lokal"
+                      onClick={() => setIsPreviewOpen(true)}
+                      className="w-full h-full flex items-center justify-center p-2 group cursor-pointer relative"
+                      title="Klik untuk membuka pratinjau gambar"
                     >
-                      <RefreshCw className={`w-4 h-4 ${isRedownloading ? 'animate-spin text-purple-600' : ''}`} />
-                      <span>{isRedownloading ? 'Mengambil...' : 'Ambil Ulang'}</span>
+                      <img
+                        src={result.resultImageUrl}
+                        alt="AI Generated result"
+                        className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-200"
+                      />
+                      <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                        <div className="p-2 bg-white/90 rounded-full text-slate-800 shadow-md transform scale-90 group-hover:scale-100 transition-transform">
+                          <Maximize2 className="w-4 h-4 text-slate-700" />
+                        </div>
+                      </div>
                     </button>
-                  )}
-                  <a
-                    href={result.resultImageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs transition-colors border border-slate-200"
-                    title="Buka tab baru"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-600 truncate">
+                      Hasil Generasi AI
+                    </span>
+
+                    <div className="relative gen-action-menu">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsMenuOpen((prev) => !prev);
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                          isMenuOpen
+                            ? 'bg-purple-100 text-purple-800 border-purple-300 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 border-slate-200 bg-white shadow-2xs'
+                        }`}
+                        title="Menu Aksi Gambar"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {isMenuOpen && (
+                        <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs font-sans">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsMenuOpen(false);
+                              setIsPreviewOpen(true);
+                            }}
+                            className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                            <span>Lihat Pratinjau</span>
+                          </button>
+
+                          {onUseAsEditBase && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsMenuOpen(false);
+                                onUseAsEditBase(result.resultImageUrl);
+                              }}
+                              className="w-full px-3 py-2 text-left text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <Scissors className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Edit Gambar</span>
+                            </button>
+                          )}
+
+                          <a
+                            href={result.resultImageUrl}
+                            download={`ai_gen_${result?.historyId || 'result'}.png`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setIsMenuOpen(false)}
+                            className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                            <span>Unduh</span>
+                          </a>
+
+                          {result.historyId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsMenuOpen(false);
+                                handleRedownload();
+                              }}
+                              disabled={isRedownloading}
+                              className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100 disabled:opacity-50"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 shrink-0 ${isRedownloading ? 'animate-spin' : ''}`} />
+                              <span>{isRedownloading ? 'Mengambil...' : 'Ambil Ulang'}</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800">
@@ -763,6 +855,104 @@ export default function GenerationsTab({
           )}
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      {isPreviewOpen && result?.resultImageUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overflow-hidden animate-in fade-in duration-150"
+          onClick={() => setIsPreviewOpen(false)}
+        >
+          <div
+            className="relative max-w-5xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] bg-slate-900 border border-slate-800 rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-900/90 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                <span className="text-xs sm:text-sm font-semibold text-slate-200 truncate">
+                  Pratinjau Hasil Gambar
+                </span>
+                <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-mono border border-slate-700">
+                  {model}
+                </span>
+                {Boolean(size) && (
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[11px] font-mono border border-slate-700">
+                    {size}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {onUseAsEditBase && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPreviewOpen(false);
+                      onUseAsEditBase(result.resultImageUrl);
+                    }}
+                    className="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    title="Edit Gambar"
+                  >
+                    <Scissors className="w-4 h-4" />
+                  </button>
+                )}
+
+                <a
+                  href={result.resultImageUrl}
+                  download={`ai_gen_${result?.historyId || 'result'}.png`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-slate-300 hover:text-purple-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  title="Unduh Gambar"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+
+                <a
+                  href={result.resultImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  title="Buka di tab baru"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer ml-1"
+                  title="Tutup (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Image Body */}
+            <div className="flex-1 min-h-0 p-2 sm:p-6 flex items-center justify-center overflow-hidden bg-slate-950/60">
+              <img
+                src={result.resultImageUrl}
+                alt="AI Generated Preview"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-lg select-none"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            {prompt && (
+              <div className="px-4 py-2.5 bg-slate-900/90 border-t border-slate-800 text-xs text-slate-300 flex items-center justify-between gap-3 shrink-0">
+                <p className="truncate text-[11px] text-slate-400 font-mono">
+                  <span className="text-purple-400 font-semibold">Prompt:</span> {prompt}
+                </p>
+                <span className="text-[10px] text-slate-500 whitespace-nowrap hidden sm:inline">
+                  Tekan ESC atau klik luar untuk menutup
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

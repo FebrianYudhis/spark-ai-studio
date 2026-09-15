@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Scissors, UploadCloud, Plus, Send, Download, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive } from 'lucide-react';
+import { Scissors, UploadCloud, Plus, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive, MoreVertical } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import {
   AVAILABLE_MODELS,
@@ -113,6 +113,21 @@ export default function EditsTab({
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const additionalInputRef = useRef<HTMLInputElement>(null);
   const [isRedownloading, setIsRedownloading] = useState(false);
+  const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null);
+
+  // Tutup menu aksi saat klik di luar area menu
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.result-action-menu')) {
+        setOpenMenuIdx(null);
+      }
+    };
+    if (openMenuIdx !== null) {
+      document.addEventListener('click', handleDocumentClick);
+      return () => document.removeEventListener('click', handleDocumentClick);
+    }
+  }, [openMenuIdx]);
 
   const handleRedownload = async () => {
     if (!result?.historyId) return;
@@ -134,6 +149,7 @@ export default function EditsTab({
               }
             : null
         );
+        setError(null);
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
       } else {
         showToast(data.error || 'Gagal mengambil ulang gambar dari response payload', 'error');
@@ -321,6 +337,38 @@ export default function EditsTab({
       return cleaned || raw;
     } catch {
       return fallback;
+    }
+  };
+
+  const handleUseResultAsBase = async (imageUrl: string) => {
+    try {
+      const res = await fetch(imageUrl);
+      if (!res.ok) {
+        showToast('Gagal memuat gambar untuk diedit', 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const ext = blob.type.split('/')[1] || 'png';
+      const cleanName = getCleanFilename(imageUrl, `edit_base_${Date.now()}.${ext}`);
+      const file = new File([blob], cleanName, { type: blob.type || 'image/png' });
+
+      clearPrimaryImage();
+      clearAllAdditionalImages();
+      setPrimaryImage({
+        id: `primary_${Date.now()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+
+      setPrompt('');
+      setError(null);
+      setResult(null);
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Gambar hasil berhasil dimuat sebagai Image Dasar (Image 1)', 'success');
+    } catch (err) {
+      console.error('Failed to set result image as edit base:', err);
+      showToast('Terjadi kesalahan saat memuat gambar untuk diedit', 'error');
     }
   };
 
@@ -1181,9 +1229,7 @@ export default function EditsTab({
                 ) : (
                   <>
                     <Send className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">
-                      Kirim {totalImageCount > 0 ? `(${totalImageCount} File, ${formatFileSize(totalBytes)}) ` : ''}ke /images/edits
-                    </span>
+                    <span className="hidden sm:inline">Kirim Request ke /images/edits</span>
                     <span className="sm:hidden">Kirim Edit Gambar</span>
                   </>
                 )}
@@ -1228,6 +1274,18 @@ export default function EditsTab({
                 <AlertTriangle className="w-10 h-10 text-rose-600" />
                 <p className="text-sm font-semibold">Gagal Mengedit Gambar</p>
                 <p className="text-xs text-rose-700 max-w-sm">{error}</p>
+                {result?.historyId && (
+                  <button
+                    type="button"
+                    onClick={handleRedownload}
+                    disabled={isRedownloading}
+                    className="mt-2 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                    title="Ambil ulang file gambar dari respons API ke server lokal"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRedownloading ? 'animate-spin text-white' : ''}`} />
+                    <span>{isRedownloading ? 'Mengambil...' : 'Ambil Gambar'}</span>
+                  </button>
+                )}
               </div>
             ) : result?.resultImageUrl || (result?.resultImageUrls && result.resultImageUrls.length > 0) ? (
               <div className="flex-1 flex flex-col space-y-4">
@@ -1246,9 +1304,15 @@ export default function EditsTab({
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                           {validSources.map((url, idx) => (
                             <div key={idx} className="space-y-1">
-                              <div className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center">
-                                <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain" />
-                              </div>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center group cursor-pointer hover:border-indigo-400 transition-all block"
+                                title="Klik untuk membuka gambar sumber di tab baru"
+                              >
+                                <img src={url} alt={`Source ${idx + 1}`} className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
+                              </a>
                               <span className="text-[10px] font-mono text-slate-500 text-center block font-semibold">
                                 image {idx + 1}
                               </span>
@@ -1269,41 +1333,83 @@ export default function EditsTab({
                         ? result.resultImageUrls
                         : [result.resultImageUrl as string]
                       ).map((url, idx) => (
-                        <div key={idx} className="space-y-2">
-                          <div className="relative aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs flex items-center justify-center group">
-                            <img src={url} alt={`Edited ${idx + 1}`} className="max-h-full max-w-full object-contain" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={url}
-                              download={`ai_edit_${result?.historyId || 'result'}_${idx + 1}.png`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors shadow-2xs"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Unduh
-                            </a>
-                            {result.historyId && (
+                        <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 space-y-2 relative shadow-2xs hover:border-slate-300 transition-all">
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative aspect-square bg-white rounded-lg overflow-hidden border border-slate-200/80 shadow-2xs flex items-center justify-center group cursor-pointer hover:border-emerald-400 transition-all block"
+                            title="Klik untuk membuka gambar hasil di tab baru"
+                          >
+                            <img src={url} alt={`Edited ${idx + 1}`} className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
+                          </a>
+
+                          {/* Action Bar: Label & Tombol Aksi Titik Tiga */}
+                          <div className="flex items-center justify-between px-0.5 pt-0.5">
+                            <span className="text-[11px] font-mono font-semibold text-slate-600">
+                              {result.resultImageUrls && result.resultImageUrls.length > 1 ? `image ${idx + 1}` : 'Hasil AI'}
+                            </span>
+
+                            <div className="relative result-action-menu">
                               <button
                                 type="button"
-                                onClick={handleRedownload}
-                                disabled={isRedownloading}
-                                className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
-                                title="Ambil ulang file gambar dari respons API ke server lokal"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuIdx(openMenuIdx === idx ? null : idx);
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                  openMenuIdx === idx
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300 shadow-xs'
+                                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 border-slate-200 bg-white shadow-2xs'
+                                }`}
+                                title="Menu Aksi Gambar"
                               >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isRedownloading ? 'animate-spin text-emerald-600' : ''}`} />
-                                <span className="hidden sm:inline">{isRedownloading ? '...' : 'Ambil Ulang'}</span>
+                                <MoreVertical className="w-4 h-4" />
                               </button>
-                            )}
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs transition-colors border border-slate-200"
-                              title="Buka tab baru"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
+
+                              {openMenuIdx === idx && (
+                                <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs font-sans">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenMenuIdx(null);
+                                      handleUseResultAsBase(url);
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                                  >
+                                    <Scissors className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>Edit Gambar</span>
+                                  </button>
+
+                                  <a
+                                    href={url}
+                                    download={`ai_edit_${result?.historyId || 'result'}_${idx + 1}.png`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => setOpenMenuIdx(null)}
+                                    className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    <span>Unduh</span>
+                                  </a>
+
+                                  {result?.historyId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenMenuIdx(null);
+                                        handleRedownload();
+                                      }}
+                                      disabled={isRedownloading}
+                                      className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer border-t border-slate-100 disabled:opacity-50"
+                                    >
+                                      <RefreshCw className={`w-3.5 h-3.5 text-purple-600 shrink-0 ${isRedownloading ? 'animate-spin' : ''}`} />
+                                      <span>{isRedownloading ? 'Mengambil...' : 'Ambil Ulang'}</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}

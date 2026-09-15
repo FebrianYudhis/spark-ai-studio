@@ -217,6 +217,7 @@ export default function Home() {
             onLoadingChange={setIsGenerationLoading}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onModelChange={handleGenerationsModelChange}
+            onUseAsEditBase={handleUseAsEditBase}
           />
         </div>
 
