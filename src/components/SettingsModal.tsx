@@ -21,6 +21,7 @@ import {
   Upload,
   User,
   LogOut,
+  Lock,
 } from 'lucide-react';
 import { showToast, showError, showConfirm } from '@/lib/swal';
 import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
@@ -64,6 +65,7 @@ interface SettingsModalProps {
     updatedAt?: string;
   } | null;
   currentUser?: UserProfileData | null;
+  onUserProfileUpdated?: (user: UserProfileData) => void;
   onLogout?: () => void;
   initialTab?: 'image' | 'enhancer' | 'profile';
 }
@@ -74,6 +76,7 @@ export default function SettingsModal({
   onSaveSuccess,
   currentConfig,
   currentUser,
+  onUserProfileUpdated,
   onLogout,
   initialTab = 'image',
 }: SettingsModalProps) {
@@ -92,6 +95,17 @@ export default function SettingsModal({
   const [enhancerModel, setEnhancerModel] = useState('gpt-4o-mini');
   const [enhancerPrompt, setEnhancerPrompt] = useState(DEFAULT_ENHANCER_PROMPT);
   const [showEnhancerToken, setShowEnhancerToken] = useState(false);
+
+  // Profile Management State
+  const [profileDisplayName, setProfileDisplayName] = useState(currentUser?.display_name || currentUser?.username || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -169,6 +183,86 @@ export default function SettingsModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Sinkronisasi data profil pengguna saat user berganti atau modal dibuka
+  useEffect(() => {
+    if (currentUser) {
+      setProfileDisplayName(currentUser.display_name || currentUser.username || '');
+    }
+  }, [currentUser, isOpen]);
+
+  const handleUpdateDisplayName = async () => {
+    if (!profileDisplayName.trim()) {
+      showToast('Nama tampilan tidak boleh kosong', 'warning');
+      return;
+    }
+    setSavingDisplayName(true);
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: profileDisplayName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengubah nama tampilan');
+      }
+      showToast(data.message || 'Nama tampilan berhasil disimpan!', 'success');
+      if (data.user && onUserProfileUpdated) {
+        onUserProfileUpdated(data.user);
+      }
+    } catch (err: unknown) {
+      showError('Gagal Mengubah Profil', err instanceof Error ? err.message : 'Terjadi kesalahan');
+    } finally {
+      setSavingDisplayName(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!currentPassword) {
+      showToast('Masukkan password saat ini', 'warning');
+      return;
+    }
+    if (!newPassword) {
+      showToast('Masukkan password baru', 'warning');
+      return;
+    }
+    if (newPassword.length < 4) {
+      showToast('Password baru minimal 4 karakter', 'warning');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('Konfirmasi password baru tidak cocok', 'warning');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal mengubah password');
+      }
+      showToast(data.message || 'Password berhasil diperbarui!', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      if (data.user && onUserProfileUpdated) {
+        onUserProfileUpdated(data.user);
+      }
+    } catch (err: unknown) {
+      showError('Gagal Mengubah Password', err instanceof Error ? err.message : 'Terjadi kesalahan');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
 
   const handleLogout = async () => {
     onLogout?.();
@@ -701,18 +795,182 @@ export default function SettingsModal({
             <div className="space-y-4">
               {currentUser ? (
                 <div className="space-y-4">
+                  {/* User Profile Card */}
                   <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50/80 via-slate-50 to-purple-50/70 rounded-2xl border border-indigo-100 shadow-xs flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-teal-500 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-indigo-500/20 shrink-0 select-none uppercase">
                       {currentUser.username.slice(0, 2)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-bold text-slate-900 truncate">
-                        {currentUser.display_name || currentUser.username}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900 truncate">
+                          {currentUser.display_name || currentUser.username}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                          Aktif
+                        </span>
+                      </div>
                       <p className="text-xs font-mono text-slate-500 mt-0.5">@{currentUser.username}</p>
+                      {currentUser.created_at && (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Terdaftar sejak {new Date(currentUser.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </p>
+                      )}
                     </div>
                   </div>
 
+                  {/* Section 1: Ganti Nama Tampilan */}
+                  <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-indigo-600" />
+                        Nama Tampilan (Display Name)
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Nama yang ditampilkan di header studio dan watermark unduhan.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={profileDisplayName}
+                        onChange={(e) => setProfileDisplayName(e.target.value)}
+                        placeholder="Masukkan nama tampilan Anda"
+                        maxLength={50}
+                        className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUpdateDisplayName}
+                        disabled={savingDisplayName || !profileDisplayName.trim() || profileDisplayName === (currentUser.display_name || currentUser.username)}
+                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer shrink-0"
+                      >
+                        {savingDisplayName ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Menyimpan...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Simpan Nama</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Section 2: Ubah Password */}
+                  <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-indigo-600" />
+                        Ubah Password Akun
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Ganti password login studio Anda (minimal 4 karakter).
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                          Password Saat Ini
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showCurrentPassword ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="Masukkan password saat ini"
+                            className="w-full pl-3.5 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                            Password Baru
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPassword ? 'text' : 'password'}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="Minimal 4 karakter"
+                              className="w-full pl-3.5 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                            Konfirmasi Password Baru
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              placeholder="Ulangi password baru"
+                              className="w-full pl-3.5 pr-10 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {newPassword && confirmPassword && (
+                        <p className={`text-[11px] font-medium ${newPassword === confirmPassword ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          {newPassword === confirmPassword ? '✓ Konfirmasi password cocok' : '✗ Konfirmasi password belum cocok'}
+                        </p>
+                      )}
+
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleUpdatePassword}
+                          disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 4}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                        >
+                          {savingPassword ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              <span>Memproses...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Key className="w-3.5 h-3.5" />
+                              <span>Perbarui Password</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section 3: Keluar dari Sesi */}
                   <div className="p-4 bg-rose-50/50 rounded-xl border border-rose-100 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold text-rose-900">Keluar dari Sesi</p>

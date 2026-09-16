@@ -640,6 +640,35 @@ export function getUsersCount(): number {
   return Number(row?.count ?? 0);
 }
 
+export function updateUserProfile(
+  userId: number,
+  input: { display_name?: string; password_hash?: string; salt?: string }
+): UserRecord | null {
+  const db = getDb();
+  const fields: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (input.display_name !== undefined) {
+    fields.push('display_name = ?');
+    params.push(input.display_name.trim());
+  }
+
+  if (input.password_hash && input.salt) {
+    fields.push('password_hash = ?');
+    params.push(input.password_hash);
+    fields.push('salt = ?');
+    params.push(input.salt);
+  }
+
+  if (fields.length === 0) {
+    return getUserById(userId);
+  }
+
+  params.push(userId);
+  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  return getUserById(userId);
+}
+
 // ==========================================
 // SESSION FUNCTIONS
 // ==========================================

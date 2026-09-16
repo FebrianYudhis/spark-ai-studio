@@ -359,6 +359,7 @@ export default function Home() {
         onSaveSuccess={handleSettingsSaveSuccess}
         currentConfig={config}
         currentUser={currentUser}
+        onUserProfileUpdated={(updatedUser) => setCurrentUser(updatedUser)}
         onLogout={handleLogout}
         initialTab={settingsTab}
       />
