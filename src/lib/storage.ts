@@ -329,12 +329,28 @@ export interface StorageStats {
  */
 export function deletePhysicalFile(urlOrFilename: string): boolean {
   try {
-    const filename = path.basename(urlOrFilename);
-    if (!filename || filename === '.' || filename === '..') return false;
-    const filePath = path.join(UPLOAD_DIR, filename);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
+    let decoded = urlOrFilename;
+    try {
+      decoded = decodeURIComponent(urlOrFilename);
+    } catch {}
+
+    const safeDecoded = path.basename(decoded);
+    const safeRaw = path.basename(urlOrFilename);
+
+    if (safeDecoded && safeDecoded !== '.' && safeDecoded !== '..') {
+      const decodedPath = path.join(UPLOAD_DIR, safeDecoded);
+      if (fs.existsSync(decodedPath)) {
+        fs.unlinkSync(decodedPath);
+        return true;
+      }
+    }
+
+    if (safeRaw && safeRaw !== '.' && safeRaw !== '..' && safeRaw !== safeDecoded) {
+      const rawPath = path.join(UPLOAD_DIR, safeRaw);
+      if (fs.existsSync(rawPath)) {
+        fs.unlinkSync(rawPath);
+        return true;
+      }
     }
     return false;
   } catch (err) {

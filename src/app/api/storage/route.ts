@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads, applyRetentionPolicy } from '@/lib/db';
+import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
+import { applyRetentionPolicy } from '@/lib/retention';
 import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
 

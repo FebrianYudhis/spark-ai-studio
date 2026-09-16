@@ -31,6 +31,13 @@ export default function InstallPwaButton() {
     const isIosDevice = /iphone|ipad|ipod/.test(ua);
     setIsIos(isIosDevice);
 
+    // Registrasi Service Worker untuk kepatuhan PWA dan memicu event beforeinstallprompt
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.warn('Service worker registration failed:', err);
+      });
+    }
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -51,6 +58,8 @@ export default function InstallPwaButton() {
     };
   }, []);
 
+  const [showDesktopGuide, setShowDesktopGuide] = useState(false);
+
   if (isInstalled) {
     return null;
   }
@@ -66,14 +75,9 @@ export default function InstallPwaButton() {
     } else if (isIos) {
       setShowIosGuide(true);
     } else {
-      showToast('Gunakan menu browser (titik tiga) lalu pilih "Tambahkan ke Layar Utama" / "Install App"', 'info');
+      setShowDesktopGuide(true);
     }
   };
-
-  // Jika bukan iOS dan browser belum memicu event installable, sembunyikan sementara
-  if (!deferredPrompt && !isIos) {
-    return null;
-  }
 
   return (
     <>
@@ -124,6 +128,51 @@ export default function InstallPwaButton() {
 
             <button
               onClick={() => setShowIosGuide(false)}
+              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Panduan Instalasi Chrome / Edge / Browser Lain */}
+      {showDesktopGuide && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDesktopGuide(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 text-slate-800 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <DownloadCloud className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-sm text-slate-900">Pasang Spark AI Studio</h3>
+              </div>
+              <button
+                onClick={() => setShowDesktopGuide(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Anda dapat memasang aplikasi web ini langsung dari browser untuk pengalaman layar penuh seperti aplikasi native:
+            </p>
+
+            <ol className="text-xs space-y-2.5 text-slate-600 list-decimal list-inside bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <li>
+                <strong>Opsi 1 (Address Bar):</strong> Klik ikon <strong>Install (komputer / panah ke bawah)</strong> di sisi kanan bilah alamat (URL bar) browser Anda.
+              </li>
+              <li>
+                <strong>Opsi 2 (Menu Browser):</strong> Klik menu titik tiga <strong>(⋮)</strong> di pojok kanan atas browser $\rightarrow$ pilih <strong>&quot;Install Spark AI Studio&quot;</strong> atau <strong>&quot;Simpan dan bagikan&quot; &gt; &quot;Pasang aplikasi ini&quot;</strong>.
+              </li>
+            </ol>
+
+            <button
+              onClick={() => setShowDesktopGuide(false)}
               className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl transition-colors cursor-pointer"
             >
               Mengerti

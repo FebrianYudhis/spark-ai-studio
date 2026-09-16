@@ -242,19 +242,30 @@ export interface ApiHitRecord {
 
 export interface CreateApiHitInput {
   user_id?: number | null;
+  userId?: number | null;
   type: 'generation' | 'edit';
   endpoint: string;
   model: string;
   prompt: string;
   size?: string;
   source_image_name?: string;
+  sourceImageName?: string;
   source_image_size?: number;
+  sourceImageSize?: number;
   source_image_url?: string;
+  sourceImageUrl?: string;
   request_payload?: Record<string, unknown> | string;
-  status_code: number;
+  requestPayload?: Record<string, unknown> | string;
+  status_code?: number;
+  statusCode?: number;
   response_payload?: unknown;
+  responsePayload?: unknown;
   result_image_url?: string;
+  resultImageUrl?: string;
   error_message?: string;
+  errorMessage?: string;
+  created_at?: string;
+  createdAt?: string;
 }
 
 export function saveApiHit(data: CreateApiHitInput): number {
@@ -273,30 +284,40 @@ export function saveApiHit(data: CreateApiHitInput): number {
     )
   `);
 
-  const requestPayloadStr = typeof data.request_payload === 'string'
-    ? data.request_payload
-    : JSON.stringify(data.request_payload ?? {});
+  const reqPayload = data.request_payload ?? data.requestPayload;
+  const requestPayloadStr = typeof reqPayload === 'string'
+    ? reqPayload
+    : JSON.stringify(reqPayload ?? {});
 
-  const responsePayloadStr = typeof data.response_payload === 'string'
-    ? data.response_payload
-    : JSON.stringify(data.response_payload ?? {});
+  const resPayload = data.response_payload ?? data.responsePayload;
+  const responsePayloadStr = typeof resPayload === 'string'
+    ? resPayload
+    : JSON.stringify(resPayload ?? {});
 
-  const now = new Date().toISOString();
+  const userId = data.user_id !== undefined ? data.user_id : (data.userId !== undefined ? data.userId : null);
+  const statusCode = Number(data.status_code ?? data.statusCode ?? 200);
+  const sourceImageName = data.source_image_name ?? data.sourceImageName ?? null;
+  const sourceImageSize = data.source_image_size !== undefined ? data.source_image_size : (data.sourceImageSize !== undefined ? data.sourceImageSize : null);
+  const sourceImageUrl = data.source_image_url ?? data.sourceImageUrl ?? null;
+  const resultImageUrl = data.result_image_url ?? data.resultImageUrl ?? null;
+  const errorMessage = data.error_message ?? data.errorMessage ?? null;
+  const now = data.created_at ?? data.createdAt ?? new Date().toISOString();
+
   const result = stmt.run(
-    data.user_id ?? null,
-    data.type,
-    data.endpoint,
-    data.model,
-    data.prompt,
+    userId,
+    data.type || 'generation',
+    data.endpoint || '',
+    data.model || '',
+    data.prompt || '',
     data.size ?? null,
-    data.source_image_name ?? null,
-    data.source_image_size ?? null,
-    data.source_image_url ?? null,
+    sourceImageName,
+    sourceImageSize,
+    sourceImageUrl,
     requestPayloadStr,
-    data.status_code,
+    statusCode,
     responsePayloadStr,
-    data.result_image_url ?? null,
-    data.error_message ?? null,
+    resultImageUrl,
+    errorMessage,
     now
   );
 
@@ -873,6 +894,3 @@ export function updateUserSettings(userId: number, input: {
 
   return getUserSettings(userId);
 }
-
-export { applyRetentionPolicy } from './retention';
-

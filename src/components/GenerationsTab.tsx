@@ -406,11 +406,24 @@ export default function GenerationsTab({
                     )}
                   </button>
                 </div>
-                <span className="text-[11px] text-slate-500">{prompt.length} karakter</span>
+                <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                  <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 border border-slate-300 rounded text-slate-500 shadow-2xs" title="Tekan Ctrl + Enter untuk membuat gambar langsung">
+                    Ctrl + Enter
+                  </kbd>
+                  <span>{prompt.length} karakter</span>
+                </div>
               </div>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!loading && prompt.trim()) {
+                      handleSubmit(e);
+                    }
+                  }
+                }}
                 rows={4}
                 placeholder="Deskripsikan gambar yang ingin Anda buat sedetail mungkin..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition-all resize-y leading-relaxed"

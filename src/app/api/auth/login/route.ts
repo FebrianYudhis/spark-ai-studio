@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getUserByUsername, createSession, applyRetentionPolicy } from '@/lib/db';
+import { getUserByUsername, createSession } from '@/lib/db';
+import { applyRetentionPolicy } from '@/lib/retention';
 import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
 

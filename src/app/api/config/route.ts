@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
         enhancer_api_token: settings.enhancer_api_token,
         enhancer_model: settings.enhancer_model,
         enhancer_prompt: settings.enhancer_prompt,
+        retention_days: settings.retention_days ?? 0,
+        retention_max_items: settings.retention_max_items ?? 0,
       },
     };
     const userPrefix = `${user.username}_`;

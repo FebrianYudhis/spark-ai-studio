@@ -499,6 +499,12 @@ export default function SettingsModal({
       const importedEnhancerPrompt = typeof (settingsData.enhancer_prompt ?? settingsData.enhancerPrompt) === 'string'
         ? String(settingsData.enhancer_prompt ?? settingsData.enhancerPrompt).trim()
         : enhancerPrompt;
+      const importedRetentionDays = settingsData.retention_days !== undefined
+        ? Number(settingsData.retention_days)
+        : (settingsData.retentionDays !== undefined ? Number(settingsData.retentionDays) : retentionDays);
+      const importedRetentionMaxItems = settingsData.retention_max_items !== undefined
+        ? Number(settingsData.retention_max_items)
+        : (settingsData.retentionMaxItems !== undefined ? Number(settingsData.retentionMaxItems) : retentionMaxItems);
 
       // Konfirmasi keamanan SweetAlert2 sebelum menerapkan
       const confirmed = await showConfirm({
@@ -524,6 +530,8 @@ export default function SettingsModal({
           enhancerToken: importedEnhancerToken,
           enhancerModel: importedEnhancerModel,
           enhancerPrompt: importedEnhancerPrompt,
+          retentionDays: importedRetentionDays,
+          retentionMaxItems: importedRetentionMaxItems,
         }),
       });
 
@@ -541,6 +549,8 @@ export default function SettingsModal({
       setEnhancerToken(importedEnhancerToken);
       setEnhancerModel(importedEnhancerModel);
       setEnhancerPrompt(importedEnhancerPrompt);
+      setRetentionDays(importedRetentionDays);
+      setRetentionMaxItems(importedRetentionMaxItems);
 
       // Sinkronkan state konfigurasi aplikasi parent
       onSaveSuccess(data.config);
