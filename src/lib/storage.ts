@@ -401,8 +401,13 @@ export function getStorageStats(activeUrls: string[]): StorageStats {
 
 /**
  * Menghapus seluruh file orphaned (file di uploads yang tidak terdaftar di database SQLite)
+ * Memiliki Grace Period (default 15 menit) untuk melindungi file yang baru diunggah / in-flight
+ * yang sedang diproses oleh AI gateway sebelum tercatat ke database.
  */
-export function cleanupOrphanedFiles(activeUrls: string[]): { deletedCount: number; freedBytes: number; deletedFiles: string[] } {
+export function cleanupOrphanedFiles(
+  activeUrls: string[],
+  minAgeMinutes: number = 15
+): { deletedCount: number; freedBytes: number; deletedFiles: string[] } {
   try {
     if (!fs.existsSync(UPLOAD_DIR)) {
       return { deletedCount: 0, freedBytes: 0, deletedFiles: [] };
@@ -412,6 +417,8 @@ export function cleanupOrphanedFiles(activeUrls: string[]): { deletedCount: numb
       activeUrls.map((u) => path.basename(u)).filter(Boolean)
     );
 
+    const minAgeMs = minAgeMinutes * 60 * 1000;
+    const now = Date.now();
     const files = fs.readdirSync(UPLOAD_DIR);
     let deletedCount = 0;
     let freedBytes = 0;
@@ -425,8 +432,23 @@ export function cleanupOrphanedFiles(activeUrls: string[]): { deletedCount: numb
         try {
           const stat = fs.statSync(filePath);
           if (stat.isFile()) {
+            // Grace period: lewati file yang baru dibuat dalam kurun waktu minAgeMinutes
+            if (now - stat.mtimeMs < minAgeMs) {
+              continue;
+            }
+
             const size = stat.size;
-            fs.unlinkSync(filePath);
+            try {
+              fs.unlinkSync(filePath);
+            } catch (unlinkErr: unknown) {
+              const code = (unlinkErr as { code?: string })?.code;
+              if (code === 'EBUSY' || code === 'EPERM') {
+                console.warn(`[storage] File ${file} sedang dikunci OS (${code}), dilewati.`);
+                continue;
+              }
+              throw unlinkErr;
+            }
+
             deletedCount++;
             freedBytes += size;
             deletedFiles.push(file);

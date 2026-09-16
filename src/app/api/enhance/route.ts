@@ -71,9 +71,11 @@ export async function POST(req: NextRequest) {
     });
 
     const rawText = await res.text();
-    console.log(`[enhance] Target URL: ${targetUrl} (model: ${model})`);
-    console.log(`[enhance] HTTP Status: ${res.status}`);
-    console.log(`[enhance] Raw response (first 500 chars):`, rawText.slice(0, 500));
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[enhance] Target URL: ${targetUrl} (model: ${model})`);
+      console.log(`[enhance] HTTP Status: ${res.status}`);
+      console.log(`[enhance] Raw response (first 500 chars):`, rawText.slice(0, 500));
+    }
 
     const data = parseChatCompletionResponse(rawText);
 

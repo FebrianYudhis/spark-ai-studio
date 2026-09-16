@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { getUserById, updateUserProfile } from '@/lib/db';
+import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,22 @@ export async function POST(req: NextRequest) {
     // 2. Validasi dan pembaruan password jika ada permintaan ganti password
     if (newPassword !== undefined && String(newPassword).length > 0) {
       const cleanNewPassword = String(newPassword);
+      const clientIp = getClientIp(req);
+      const userKey = `profile:pwd:user:${authUser.id}`;
+      const ipKey = `profile:pwd:ip:${clientIp}`;
+
+      // Periksa rate limit percobaan ubah password (maks 5 kali salah per 5 menit)
+      const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+      const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+      if (!userLimit.allowed || !ipLimit.allowed) {
+        const retryAfter = Math.max(userLimit.retryAfterSeconds ?? 60, ipLimit.retryAfterSeconds ?? 60);
+        return NextResponse.json(
+          {
+            error: `Terlalu banyak percobaan ganti password yang salah. Fitur ini dikunci sementara demi keamanan. Silakan coba lagi dalam ${retryAfter} detik.`,
+          },
+          { status: 429, headers: { ...NO_CACHE_HEADERS, 'Retry-After': String(retryAfter) } }
+        );
+      }
 
       if (!currentPassword) {
         return NextResponse.json(
@@ -61,11 +78,17 @@ export async function POST(req: NextRequest) {
 
       const isValidPassword = await verifyPassword(String(currentPassword), fullUser.password_hash, fullUser.salt);
       if (!isValidPassword) {
+        recordFailedAttempt(userKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+        recordFailedAttempt(ipKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
         return NextResponse.json(
           { error: 'Password saat ini tidak sesuai. Silakan periksa kembali.' },
           { status: 400, headers: NO_CACHE_HEADERS }
         );
       }
+
+      // Password saat ini valid, reset rate limit
+      resetRateLimit(userKey);
+      resetRateLimit(ipKey);
 
       if (cleanNewPassword.length < 4) {
         return NextResponse.json(

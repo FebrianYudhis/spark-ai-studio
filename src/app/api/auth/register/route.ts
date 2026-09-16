@@ -22,6 +22,8 @@ export async function POST(req: Request) {
         }
       );
     }
+    // Catat percobaan pendaftaran untuk menghitung kuota per IP
+    recordFailedAttempt(ipKey, 10, 15 * 60 * 1000, 15 * 60 * 1000);
 
     const body = await req.json();
     const username = String(body.username || '').trim().toLowerCase();

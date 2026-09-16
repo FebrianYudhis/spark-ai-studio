@@ -63,19 +63,26 @@ export async function compressImageIfOver10MB(
             return resolve(file);
           }
 
-          // Gambar dengan latar belakang putih untuk transparansi yang mungkin hilang saat konversi JPG
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, width, height);
+          const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+
+          // Gambar latar putih HANYA untuk format yang tidak mendukung alpha (JPEG)
+          if (!isPng) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+          }
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Ekspor sebagai JPEG berkualitas tinggi (0.88)
+          // Jika PNG, gunakan WebP untuk menjaga transparansi (alpha channel) dengan kompresi optimal
+          const exportMime = isPng ? 'image/webp' : 'image/jpeg';
+          const exportExt = isPng ? '_opt.webp' : '_opt.jpg';
+
           canvas.toBlob(
             (blob) => {
               if (blob && blob.size < file.size) {
                 const originalExt = file.name.substring(file.name.lastIndexOf('.'));
                 const baseName = file.name.replace(originalExt, '');
-                const compressedFile = new File([blob], `${baseName}_opt.jpg`, {
-                  type: 'image/jpeg',
+                const compressedFile = new File([blob], `${baseName}${exportExt}`, {
+                  type: exportMime,
                   lastModified: Date.now(),
                 });
 
@@ -90,7 +97,7 @@ export async function compressImageIfOver10MB(
                 resolve(file);
               }
             },
-            'image/jpeg',
+            exportMime,
             0.88
           );
         };
