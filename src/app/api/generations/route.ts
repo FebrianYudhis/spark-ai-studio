@@ -100,7 +100,6 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(forwardPayload),
-      signal: AbortSignal.timeout(120000),
     });
 
     const statusCode = apiResponse.status;
@@ -167,7 +166,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     let message = err instanceof Error ? err.message : String(err);
     if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      message = 'Koneksi ke gateway AI timeout setelah 120 detik. Server remote sedang antre atau lambat merespons.';
+      message = 'Koneksi ke gateway AI terputus atau dibatalkan sebelum proses selesai merespons.';
     }
     const historyId = saveApiHit({
       user_id: user.id,
