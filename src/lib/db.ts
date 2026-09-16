@@ -1,3 +1,4 @@
+import './suppressWarnings';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -80,6 +81,7 @@ function initSchema(db: DatabaseSync) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -193,6 +195,15 @@ function initSchema(db: DatabaseSync) {
         VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, ?)
       `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT, now);
     }
+  } catch {}
+
+  // Pembersihan otomatis sesi-sesi kadaluarsa (orphaned sessions) saat startup database
+  try {
+    const nowIso = new Date().toISOString();
+    db.prepare(`
+      DELETE FROM sessions 
+      WHERE expires_at <= ? OR expires_at <= datetime('now', 'localtime')
+    `).run(nowIso);
   } catch {}
 }
 
@@ -673,8 +684,31 @@ export function updateUserProfile(
 // SESSION FUNCTIONS
 // ==========================================
 
+/**
+ * Membersihkan seluruh sesi kadaluarsa dari database SQLite (mencegah penumpukan data sesi yatim / orphaned).
+ * Mengembalikan jumlah record sesi yang berhasil dihapus.
+ */
+export function cleanExpiredSessions(): number {
+  try {
+    const db = getDb();
+    const nowIso = new Date().toISOString();
+    const result = db.prepare(`
+      DELETE FROM sessions 
+      WHERE expires_at <= ? OR expires_at <= datetime('now', 'localtime')
+    `).run(nowIso);
+    return Number(result.changes);
+  } catch (err) {
+    console.error('[db] Gagal membersihkan sesi kadaluarsa:', err);
+    return 0;
+  }
+}
+
 export function createSession(sessionId: string, userId: number, daysValid: number = 30): void {
   const db = getDb();
+
+  // Bersihkan sesi kadaluarsa secara berkala
+  cleanExpiredSessions();
+
   const now = new Date();
   const createdAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + daysValid * 24 * 60 * 60 * 1000).toISOString();

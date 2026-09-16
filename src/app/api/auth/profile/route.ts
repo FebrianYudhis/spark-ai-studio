@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const isValidPassword = verifyPassword(String(currentPassword), fullUser.password_hash, fullUser.salt);
+      const isValidPassword = await verifyPassword(String(currentPassword), fullUser.password_hash, fullUser.salt);
       if (!isValidPassword) {
         return NextResponse.json(
           { error: 'Password saat ini tidak sesuai. Silakan periksa kembali.' },
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const { hash, salt } = hashPassword(cleanNewPassword);
+      const { hash, salt } = await hashPassword(cleanNewPassword);
       updates.password_hash = hash;
       updates.salt = salt;
       messages.push('Password berhasil diperbarui');

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllActiveImageUrls } from '@/lib/db';
+import { getAllActiveImageUrls, cleanExpiredSessions } from '@/lib/db';
 import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
 
@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
     if (action === 'clean_orphaned') {
       const activeUrls = getAllActiveImageUrls();
       const result = cleanupOrphanedFiles(activeUrls);
+      const cleanedSessionsCount = cleanExpiredSessions();
+
+      const sessionNotice = cleanedSessionsCount > 0 ? ` & ${cleanedSessionsCount} sesi kadaluarsa dibersihkan` : '';
 
       return NextResponse.json({
         success: true,
@@ -61,9 +64,10 @@ export async function POST(req: NextRequest) {
         freedBytes: result.freedBytes,
         formattedFreedSize: formatBytes(result.freedBytes),
         deletedFiles: result.deletedFiles,
+        cleanedSessionsCount,
         message: result.deletedCount > 0
-          ? `Berhasil membersihkan ${result.deletedCount} file sampah tak terpakai (${formatBytes(result.freedBytes)} ruang dibebaskan)`
-          : 'Penyimpanan sudah bersih. Tidak ditemukan file sampah tak terpakai.',
+          ? `Berhasil membersihkan ${result.deletedCount} file sampah tak terpakai (${formatBytes(result.freedBytes)} ruang dibebaskan)${sessionNotice}.`
+          : `Penyimpanan sudah bersih${sessionNotice ? ` (${cleanedSessionsCount} sesi kadaluarsa dibersihkan)` : '. Tidak ditemukan file sampah tak terpakai.'}`,
       });
     }
 

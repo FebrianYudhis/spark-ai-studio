@@ -1,25 +1,29 @@
 import crypto from 'node:crypto';
+import { promisify } from 'node:util';
 import { cookies } from 'next/headers';
 import { getDb, UserRecord } from './db';
+
+const scryptAsync = promisify(crypto.scrypt);
 
 export const SESSION_COOKIE_NAME = 'spark_session';
 export const SESSION_DURATION_DAYS = 30;
 
 /**
- * Hash password menggunakan node:crypto scrypt
+ * Hash password menggunakan node:crypto scrypt asynchronous (non-blocking event loop)
  */
-export function hashPassword(password: string): { hash: string; salt: string } {
+export async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return { hash, salt };
+  const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
+  return { hash: derivedKey.toString('hex'), salt };
 }
 
 /**
- * Verifikasi password menggunakan timingSafeEqual
+ * Verifikasi password menggunakan timingSafeEqual asynchronous (non-blocking event loop)
  */
-export function verifyPassword(password: string, hash: string, salt: string): boolean {
+export async function verifyPassword(password: string, hash: string, salt: string): Promise<boolean> {
   try {
-    const calculatedHash = crypto.scryptSync(password, salt, 64).toString('hex');
+    const derivedKey = (await scryptAsync(password, salt, 64)) as Buffer;
+    const calculatedHash = derivedKey.toString('hex');
     return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(calculatedHash, 'hex'));
   } catch {
     return false;

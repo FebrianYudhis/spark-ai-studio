@@ -2,9 +2,27 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createUser, getUserByUsername, createSession } from '@/lib/db';
 import { hashPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
+import { getClientIp, checkRateLimit, recordFailedAttempt } from '@/lib/rateLimiter';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const ipKey = `register:ip:${clientIp}`;
+
+    // Batasi registrasi maksimal 10 akun per 15 menit per IP untuk mencegah bot
+    const ipLimit = checkRateLimit(ipKey, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (!ipLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: `Terlalu banyak permintaan pendaftaran dari jaringan Anda. Silakan coba lagi dalam ${ipLimit.retryAfterSeconds ?? 60} detik.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(ipLimit.retryAfterSeconds ?? 60) },
+        }
+      );
+    }
+
     const body = await req.json();
     const username = String(body.username || '').trim().toLowerCase();
     const password = String(body.password || '');
@@ -39,7 +57,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { hash, salt } = hashPassword(password);
+    const { hash, salt } = await hashPassword(password);
     const user = createUser({
       username,
       display_name: displayName || username,
