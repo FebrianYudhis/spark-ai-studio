@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserSettings, DEFAULT_ENHANCER_PROMPT } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
+import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,12 +78,10 @@ export async function POST(req: NextRequest) {
     const data = parseChatCompletionResponse(rawText);
 
     if (!res.ok) {
-      const errorObj = data?.error as { message?: string } | undefined;
+      const sanitized = parseAndSanitizeApiResponse(rawText, res.status, 'Gateway Prompt Enhancer');
       const errMsg =
-        errorObj?.message ||
-        (typeof data?.rawText === 'string' && data.rawText.trim()
-          ? data.rawText.slice(0, 300)
-          : null) ||
+        sanitized.errorMessage ||
+        (data?.error as { message?: string })?.message ||
         `HTTP ${res.status}: Gagal menghubungi Chat Completions API (${res.statusText || 'Error'})`;
       return NextResponse.json({ error: errMsg }, { status: res.status });
     }

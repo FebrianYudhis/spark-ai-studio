@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
+import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { validateImageSize, validateImageQuality, validateInputFidelity } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import path from 'node:path';
@@ -98,10 +99,20 @@ export async function POST(req: NextRequest) {
   const targetUrl = `${baseUrl.replace(/\/+$/, '')}/images/edits`;
 
   // Simpan file ke disk lokal untuk preview riwayat
-  const savedPrimary = await saveUploadedFile(primaryFile, 'image_1');
-  const savedAdditionals = await Promise.all(
-    additionalFiles.map((file, idx) => saveUploadedFile(file, `additional_${idx + 2}`))
-  );
+  let savedPrimary;
+  let savedAdditionals;
+  try {
+    savedPrimary = await saveUploadedFile(primaryFile, 'image_1');
+    savedAdditionals = await Promise.all(
+      additionalFiles.map((file, idx) => saveUploadedFile(file, `additional_${idx + 2}`))
+    );
+  } catch (saveErr: unknown) {
+    console.error('[edits] Failed to save uploaded files to local disk:', saveErr);
+    return NextResponse.json(
+      { error: 'Gagal menyimpan file gambar ke disk server: ' + (saveErr instanceof Error ? saveErr.message : String(saveErr)) },
+      { status: 500 }
+    );
+  }
 
   const allSavedSources = [savedPrimary, ...savedAdditionals];
   const totalSize = allSavedSources.reduce((acc, s) => acc + s.size, 0);
@@ -175,12 +186,8 @@ export async function POST(req: NextRequest) {
 
     const statusCode = apiResponse.status;
     const rawText = await apiResponse.text();
-    let responseData: Record<string, unknown>;
-    try {
-      responseData = JSON.parse(rawText);
-    } catch {
-      responseData = { rawText };
-    }
+    const sanitized = parseAndSanitizeApiResponse(rawText, statusCode, 'Gateway Edits AI');
+    const responseData = sanitized.data;
 
     const savedResultUrls: string[] = [];
     let errorMessage: string | undefined = undefined;
@@ -192,16 +199,18 @@ export async function POST(req: NextRequest) {
         const cached = await saveRemoteOrBase64Image(rawImages[i], `edit_result_${i + 1}`);
         if (cached) {
           savedResultUrls.push(cached);
+        } else if (rawImages[i].startsWith('http://') || rawImages[i].startsWith('https://') || rawImages[i].startsWith('data:image/')) {
+          savedResultUrls.push(rawImages[i]);
         }
       }
       if (rawImages.length === 0) {
         const errObj = responseData?.error as { message?: string } | undefined;
-        errorMessage = errObj?.message || 'Tidak ditemukan data gambar pada respons API edits.';
+        errorMessage = errObj?.message || sanitized.errorMessage || 'Tidak ditemukan data gambar pada respons API edits.';
       } else if (savedResultUrls.length === 0) {
         errorMessage = 'Gagal mengunduh atau menyimpan gambar hasil edit ke disk lokal.';
       }
     } else {
-      errorMessage = (responseData?.error as { message?: string })?.message || JSON.stringify(responseData);
+      errorMessage = sanitized.errorMessage || (responseData?.error as { message?: string })?.message || `HTTP ${statusCode}: Gagal memproses edit gambar`;
     }
 
     const primaryResultImageUrl = savedResultUrls.length > 0 ? savedResultUrls[0] : undefined;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getUserByUsername, createSession } from '@/lib/db';
-import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS } from '@/lib/auth';
+import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
@@ -36,10 +36,11 @@ export async function POST(req: Request) {
     const sessionId = generateSessionId();
     createSession(sessionId, user.id, SESSION_DURATION_DAYS);
 
+    const isSecure = isRequestSecure(req);
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE_NAME, sessionId, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'lax',
       path: '/',
       maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60,

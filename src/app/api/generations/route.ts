@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
+import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { validateImageSize, validateImageQuality } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 
@@ -103,12 +104,8 @@ export async function POST(req: NextRequest) {
 
     const statusCode = apiResponse.status;
     const rawText = await apiResponse.text();
-    let responseData: Record<string, unknown>;
-    try {
-      responseData = JSON.parse(rawText);
-    } catch {
-      responseData = { rawText };
-    }
+    const sanitized = parseAndSanitizeApiResponse(rawText, statusCode, 'Gateway Generations AI');
+    const responseData = sanitized.data;
 
     let resultImageUrl: string | undefined = undefined;
     let errorMessage: string | undefined = undefined;
@@ -119,14 +116,18 @@ export async function POST(req: NextRequest) {
       if (rawImages.length > 0) {
         resultImageUrl = await saveRemoteOrBase64Image(rawImages[0], 'gen');
         if (!resultImageUrl) {
-          errorMessage = 'Gagal mengunduh atau menyimpan gambar hasil ke disk lokal.';
+          if (rawImages[0].startsWith('http://') || rawImages[0].startsWith('https://') || rawImages[0].startsWith('data:image/')) {
+            resultImageUrl = rawImages[0];
+          } else {
+            errorMessage = 'Gagal mengunduh atau menyimpan gambar hasil ke disk lokal.';
+          }
         }
       } else {
         const errObj = responseData?.error as { message?: string } | undefined;
-        errorMessage = errObj?.message || 'Tidak ditemukan URL atau data Base64 gambar pada response payload API.';
+        errorMessage = errObj?.message || sanitized.errorMessage || 'Tidak ditemukan URL atau data Base64 gambar pada response payload API.';
       }
     } else {
-      errorMessage = (responseData?.error as { message?: string })?.message || JSON.stringify(responseData);
+      errorMessage = sanitized.errorMessage || (responseData?.error as { message?: string })?.message || `HTTP ${statusCode}: Gagal memproses generasi gambar`;
     }
 
     // Save hit to SQLite

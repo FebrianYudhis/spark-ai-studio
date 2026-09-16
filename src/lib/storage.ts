@@ -234,12 +234,21 @@ export async function saveRemoteOrBase64Image(
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 7);
 
-    // Jika sudah merupakan path lokal uploads, verifikasi keberadaan file fisik di disk
-    if (urlOrBase64.startsWith('/uploads/')) {
-      const cleanRel = urlOrBase64.replace(/^\//, '');
-      const localPath = path.join(process.cwd(), 'public', cleanRel);
+    // Jika URL adalah path lokal /uploads/... atau full URL yang mengarah ke /uploads/...
+    const uploadsIndex = urlOrBase64.indexOf('/uploads/');
+    if (uploadsIndex !== -1) {
+      const uploadSubpath = urlOrBase64.substring(uploadsIndex + '/uploads/'.length);
+      let safeFilename = path.basename(uploadSubpath);
+      try {
+        safeFilename = path.basename(decodeURIComponent(uploadSubpath));
+      } catch {}
+      const localPath = path.join(UPLOAD_DIR, safeFilename);
       if (fs.existsSync(localPath)) {
-        return urlOrBase64;
+        return `/uploads/${safeFilename}`;
+      }
+      const rawLocalPath = path.join(UPLOAD_DIR, path.basename(uploadSubpath));
+      if (fs.existsSync(rawLocalPath)) {
+        return `/uploads/${path.basename(uploadSubpath)}`;
       }
       return undefined;
     }
@@ -481,10 +490,21 @@ export async function convertImageToBase64DataUrl(imagePathOrUrl: string): Promi
     return trimmed;
   }
 
-  // 2. File lokal (contoh: /uploads/edit_...png)
-  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('uploads/')) {
-    const cleanRel = trimmed.replace(/^\//, '');
-    const localPath = path.join(process.cwd(), 'public', cleanRel);
+  // 2. File lokal (contoh: /uploads/edit_...png atau full URL http://.../uploads/edit_...png)
+  const uploadsIndex = trimmed.indexOf('/uploads/');
+  if (uploadsIndex !== -1) {
+    const uploadSubpath = trimmed.substring(uploadsIndex + '/uploads/'.length);
+    let safeFilename = path.basename(uploadSubpath);
+    try {
+      safeFilename = path.basename(decodeURIComponent(uploadSubpath));
+    } catch {}
+    let localPath = path.join(UPLOAD_DIR, safeFilename);
+    if (!fs.existsSync(localPath)) {
+      const rawPath = path.join(UPLOAD_DIR, path.basename(uploadSubpath));
+      if (fs.existsSync(rawPath)) {
+        localPath = rawPath;
+      }
+    }
     if (fs.existsSync(localPath)) {
       try {
         const buffer = fs.readFileSync(localPath);

@@ -58,6 +58,7 @@ function initSchema(db: DatabaseSync) {
       PRAGMA journal_mode = WAL;
       PRAGMA busy_timeout = 5000;
       PRAGMA synchronous = NORMAL;
+      PRAGMA foreign_keys = ON;
     `);
   } catch {}
 
@@ -182,14 +183,15 @@ function initSchema(db: DatabaseSync) {
       const initialToken = process.env.AI_API_TOKEN || 'sk-proj-dummyapikey1234567890abcdef';
       const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
       const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
+      const now = new Date().toISOString();
       db.prepare(`
         INSERT INTO app_settings (
           id, base_url, api_token, generations_model, edits_model,
           enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
           updated_at
         )
-        VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, datetime('now', 'localtime'))
-      `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT);
+        VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, ?)
+      `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT, now);
     }
   } catch {}
 }
@@ -242,7 +244,7 @@ export function saveApiHit(data: CreateApiHitInput): number {
       ?, ?, ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?,
-      ?, ?, datetime('now', 'localtime')
+      ?, ?, ?
     )
   `);
 
@@ -254,6 +256,7 @@ export function saveApiHit(data: CreateApiHitInput): number {
     ? data.response_payload
     : JSON.stringify(data.response_payload ?? {});
 
+  const now = new Date().toISOString();
   const result = stmt.run(
     data.user_id ?? null,
     data.type,
@@ -268,7 +271,8 @@ export function saveApiHit(data: CreateApiHitInput): number {
     data.status_code,
     responsePayloadStr,
     data.result_image_url ?? null,
-    data.error_message ?? null
+    data.error_message ?? null,
+    now
   );
 
   return Number(result.lastInsertRowid);
@@ -482,14 +486,15 @@ export function getAppSettings(): AppSettings {
     const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
     const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
 
+    const now = new Date().toISOString();
     db.prepare(`
       INSERT INTO app_settings (
         id, base_url, api_token, generations_model, edits_model,
         enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
         updated_at
       )
-      VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, datetime('now', 'localtime'))
-    `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT);
+      VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, ?)
+    `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT, now);
 
     row = db.prepare(`SELECT * FROM app_settings WHERE id = 1`).get() as unknown as AppSettings;
   }
@@ -528,6 +533,7 @@ export function updateAppSettings(input: {
   const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
 
   const db = getDb();
+  const now = new Date().toISOString();
   db.prepare(`
     UPDATE app_settings
     SET
@@ -539,7 +545,7 @@ export function updateAppSettings(input: {
       enhancer_api_token = ?,
       enhancer_model = ?,
       enhancer_prompt = ?,
-      updated_at = datetime('now', 'localtime')
+      updated_at = ?
     WHERE id = 1
   `).run(
     nextBaseUrl,
@@ -549,7 +555,8 @@ export function updateAppSettings(input: {
     nextEnhancerBaseUrl,
     nextEnhancerApiToken,
     nextEnhancerModel,
-    nextEnhancerPrompt
+    nextEnhancerPrompt,
+    now
   );
 
   return getAppSettings();
@@ -575,15 +582,17 @@ export function createUser(input: {
   salt: string;
 }): UserRecord {
   const db = getDb();
+  const now = new Date().toISOString();
   const stmt = db.prepare(`
     INSERT INTO users (username, display_name, password_hash, salt, created_at)
-    VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+    VALUES (?, ?, ?, ?, ?)
   `);
   const res = stmt.run(
     input.username.toLowerCase().trim(),
     input.display_name?.trim() || input.username.trim(),
     input.password_hash,
-    input.salt
+    input.salt,
+    now
   );
   const userId = Number(res.lastInsertRowid);
 
@@ -597,7 +606,7 @@ export function createUser(input: {
     ) VALUES (
       ?, ?, '', ?, ?,
       ?, '', ?, ?,
-      datetime('now', 'localtime')
+      ?
     )
   `).run(
     userId,
@@ -606,7 +615,8 @@ export function createUser(input: {
     defaultApp.edits_model || 'gpt-image-2.5',
     defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
     defaultApp.enhancer_model || 'gpt-4o-mini',
-    defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT
+    defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
+    now
   );
 
   return getUserById(userId)!;
@@ -636,10 +646,14 @@ export function getUsersCount(): number {
 
 export function createSession(sessionId: string, userId: number, daysValid: number = 30): void {
   const db = getDb();
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + daysValid * 24 * 60 * 60 * 1000).toISOString();
+
   db.prepare(`
     INSERT INTO sessions (id, user_id, expires_at, created_at)
-    VALUES (?, ?, datetime('now', '+${daysValid} days', 'localtime'), datetime('now', 'localtime'))
-  `).run(sessionId, userId);
+    VALUES (?, ?, ?, ?)
+  `).run(sessionId, userId, expiresAt, createdAt);
 }
 
 export function deleteSession(sessionId: string): void {
@@ -675,6 +689,7 @@ export function getUserSettings(userId: number): UserSettings {
 
   if (!row) {
     const defaultApp = getAppSettings();
+    const now = new Date().toISOString();
     db.prepare(`
       INSERT OR IGNORE INTO user_settings (
         user_id, base_url, api_token, generations_model, edits_model,
@@ -683,7 +698,7 @@ export function getUserSettings(userId: number): UserSettings {
       ) VALUES (
         ?, ?, '', ?, ?,
         ?, '', ?, ?,
-        datetime('now', 'localtime')
+        ?
       )
     `).run(
       userId,
@@ -692,7 +707,8 @@ export function getUserSettings(userId: number): UserSettings {
       defaultApp.edits_model || 'gpt-image-2.5',
       defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
       defaultApp.enhancer_model || 'gpt-4o-mini',
-      defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT
+      defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
+      now
     );
     row = db.prepare(`SELECT * FROM user_settings WHERE user_id = ?`).get(userId) as unknown as UserSettings;
   }
@@ -730,6 +746,7 @@ export function updateUserSettings(userId: number, input: {
   const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
 
   const db = getDb();
+  const now = new Date().toISOString();
   db.prepare(`
     UPDATE user_settings
     SET
@@ -741,7 +758,7 @@ export function updateUserSettings(userId: number, input: {
       enhancer_api_token = ?,
       enhancer_model = ?,
       enhancer_prompt = ?,
-      updated_at = datetime('now', 'localtime')
+      updated_at = ?
     WHERE user_id = ?
   `).run(
     nextBaseUrl,
@@ -752,6 +769,7 @@ export function updateUserSettings(userId: number, input: {
     nextEnhancerApiToken,
     nextEnhancerModel,
     nextEnhancerPrompt,
+    now,
     userId
   );
 

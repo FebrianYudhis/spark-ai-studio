@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, X, ExternalLink } from 'lucide-react';
 import { showToast } from '@/lib/swal';
+import { triggerDownload } from '@/lib/imageHelper';
 import {
   AVAILABLE_MODELS,
   AvailableModel,
@@ -132,6 +133,7 @@ export default function GenerationsTab({
       if (res.ok && data.success && data.resultImageUrl) {
         setResult((prev) => (prev ? { ...prev, resultImageUrl: data.resultImageUrl } : null));
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
+        onSuccess?.();
       } else {
         showToast(data.error || 'Gagal mengambil ulang gambar dari response payload', 'error');
       }
@@ -249,10 +251,25 @@ export default function GenerationsTab({
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        let fallbackMsg = `HTTP ${res.status}: Gagal memproses request pembuatan gambar`;
+        if (res.status === 502 || res.status === 504 || res.status === 524) {
+          fallbackMsg = `Koneksi ke gateway AI mengalami timeout/gangguan (HTTP ${res.status}). Silakan coba lagi.`;
+        } else {
+          const titleMatch = rawText.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch && titleMatch[1]) {
+            fallbackMsg = `Server error (${titleMatch[1].trim()})`;
+          }
+        }
+        throw new Error(fallbackMsg);
+      }
 
       if (!res.ok || !data.success) {
-        const msg = data.errorMessage || data.error || `HTTP ${res.status}: Gagal memproses request`;
+        const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses request`;
         setError(msg);
         showToast(msg, 'error');
       } else {
@@ -260,11 +277,11 @@ export default function GenerationsTab({
       }
 
       setResult({
-        resultImageUrl: data.resultImageUrl || data.imageUrl,
+        resultImageUrl: (data.resultImageUrl as string) || (data.imageUrl as string),
         statusCode: res.status,
-        requestPayload: data.requestPayload || {},
-        response: data.response || data.rawResponse || data,
-        historyId: data.historyId,
+        requestPayload: (data.requestPayload as Record<string, unknown>) || {},
+        response: (data.response as Record<string, unknown>) || (data.rawResponse as Record<string, unknown>) || data,
+        historyId: data.historyId as number | undefined,
       });
 
       if (res.ok && data.success) {
@@ -779,17 +796,19 @@ export default function GenerationsTab({
                             </button>
                           )}
 
-                          <a
-                            href={result.resultImageUrl}
-                            download={`ai_gen_${result?.historyId || 'result'}.png`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => setIsMenuOpen(false)}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsMenuOpen(false);
+                              if (result.resultImageUrl) {
+                                triggerDownload(result.resultImageUrl, `ai_gen_${result?.historyId || 'result'}.png`);
+                              }
+                            }}
                             className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
                           >
                             <Download className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                             <span>Unduh</span>
-                          </a>
+                          </button>
 
                           {result.historyId && (
                             <button
@@ -900,16 +919,18 @@ export default function GenerationsTab({
                   </button>
                 )}
 
-                <a
-                  href={result.resultImageUrl}
-                  download={`ai_gen_${result?.historyId || 'result'}.png`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (result.resultImageUrl) {
+                      triggerDownload(result.resultImageUrl, `ai_gen_${result?.historyId || 'result'}.png`);
+                    }
+                  }}
                   className="p-2 text-slate-300 hover:text-purple-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   title="Unduh Gambar"
                 >
                   <Download className="w-4 h-4" />
-                </a>
+                </button>
 
                 <a
                   href={result.resultImageUrl}

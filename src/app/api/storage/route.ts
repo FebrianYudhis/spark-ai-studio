@@ -68,6 +68,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'clean_all') {
+      if (user.id !== 1) {
+        return NextResponse.json(
+          { error: 'Hanya administrator (user utama) yang memiliki izin mengosongkan seluruh penyimpanan.' },
+          { status: 403 }
+        );
+      }
+
       const result = cleanupAllUploadFiles();
 
       return NextResponse.json({

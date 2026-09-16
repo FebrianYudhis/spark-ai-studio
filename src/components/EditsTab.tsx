@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Scissors, UploadCloud, Plus, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive, MoreVertical } from 'lucide-react';
 import { showToast } from '@/lib/swal';
+import { isSupportedImageFile, compressImageIfOver10MB, triggerDownload } from '@/lib/imageHelper';
 import {
   AVAILABLE_MODELS,
   AvailableModel,
@@ -151,6 +152,7 @@ export default function EditsTab({
         );
         setError(null);
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
+        onSuccess?.();
       } else {
         showToast(data.error || 'Gagal mengambil ulang gambar dari response payload', 'error');
       }
@@ -207,19 +209,24 @@ export default function EditsTab({
   }, [presetPrompt, presetPromptKey]);
 
   // Handle Primary Image Change
-  const handlePrimaryChange = (file: File | null) => {
+  const handlePrimaryChange = async (file: File | null) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+    if (!isSupportedImageFile(file)) {
       showToast(`File "${file.name}" bukan gambar yang valid. Gunakan format gambar (PNG, JPG, WebP, dll).`, 'warning');
       return;
     }
+
+    const processedFile = await compressImageIfOver10MB(file, (origMb, optMb) => {
+      showToast(`Ukuran foto kamera (${origMb}MB) > 10MB berhasil dioptimasi ke ${optMb}MB agar tidak timeout.`, 'info');
+    });
+
     if (primaryImage) {
       URL.revokeObjectURL(primaryImage.previewUrl);
     }
     setPrimaryImage({
       id: `primary_${Date.now()}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
+      file: processedFile,
+      previewUrl: URL.createObjectURL(processedFile),
     });
   };
 
@@ -236,11 +243,11 @@ export default function EditsTab({
   }, []);
 
   // Handle Additional Images Change
-  const addAdditionalFiles = (files: FileList | File[]) => {
+  const addAdditionalFiles = async (files: FileList | File[]) => {
     const rawList = Array.from(files);
     if (rawList.length === 0) return;
 
-    const fileArray = rawList.filter((f) => f.type.startsWith('image/'));
+    const fileArray = rawList.filter((f) => isSupportedImageFile(f));
     const invalidCount = rawList.length - fileArray.length;
 
     if (invalidCount > 0) {
@@ -254,7 +261,15 @@ export default function EditsTab({
 
     if (fileArray.length === 0) return;
 
-    const newItems: ImageItem[] = fileArray.map((file) => ({
+    const processedFiles = await Promise.all(
+      fileArray.map((f) =>
+        compressImageIfOver10MB(f, (origMb, optMb) => {
+          showToast(`File tambahan "${f.name}" (${origMb}MB) dioptimasi ke ${optMb}MB.`, 'info');
+        })
+      )
+    );
+
+    const newItems: ImageItem[] = processedFiles.map((file) => ({
       id: `add_${file.name}_${Date.now()}_${Math.random()}`,
       file,
       previewUrl: URL.createObjectURL(file),
@@ -589,18 +604,36 @@ export default function EditsTab({
         body: formData,
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: Record<string, unknown> = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        // Respon berupa HTML atau teks mentah (misal error proxy/network/server crash)
+        let fallbackMsg = `HTTP ${res.status}: Gagal memproses edit gambar`;
+        if (res.status === 413) {
+          fallbackMsg = 'Ukuran foto terlalu besar untuk gateway (HTTP 413). Silakan kompres atau pilih foto dengan resolusi lebih kecil.';
+        } else if (res.status === 502 || res.status === 504 || res.status === 524) {
+          fallbackMsg = `Koneksi ke gateway AI mengalami timeout/gangguan (HTTP ${res.status}). Silakan coba lagi sesaat lagi.`;
+        } else {
+          const titleMatch = rawText.match(/<title[^>]*>([^<]+)<\/title>/i);
+          if (titleMatch && titleMatch[1]) {
+            fallbackMsg = `Server error (${titleMatch[1].trim()})`;
+          }
+        }
+        throw new Error(fallbackMsg);
+      }
 
       if (!res.ok || !data.success) {
-        const msg = data.errorMessage || data.error || `HTTP ${res.status}: Gagal memproses edit gambar`;
+        const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses edit gambar`;
         setError(msg);
         showToast(msg, 'error');
         if (data.historyId || data.requestSummary) {
-          setResult(data);
+          setResult(data as any);
         }
       } else {
         showToast('Gambar berhasil diedit!', 'success');
-        setResult(data);
+        setResult(data as any);
         onSuccess();
       }
     } catch (err: unknown) {
@@ -1385,17 +1418,17 @@ export default function EditsTab({
                                     <span>Edit Gambar</span>
                                   </button>
 
-                                  <a
-                                    href={url}
-                                    download={`ai_edit_${result?.historyId || 'result'}_${idx + 1}.png`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => setOpenMenuIdx(null)}
-                                    className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
-                                  >
-                                    <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                                    <span>Unduh</span>
-                                  </a>
+                                   <button
+                                     type="button"
+                                     onClick={() => {
+                                       setOpenMenuIdx(null);
+                                       triggerDownload(url, `ai_edit_${result?.historyId || 'result'}_${idx + 1}.png`);
+                                     }}
+                                     className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                                   >
+                                     <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                     <span>Unduh</span>
+                                   </button>
 
                                   {result?.historyId && (
                                     <button

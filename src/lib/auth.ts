@@ -34,6 +34,23 @@ export function generateSessionId(): string {
 }
 
 /**
+ * Memeriksa apakah request berasal dari protokol aman (HTTPS),
+ * baik secara langsung maupun melalui reverse-proxy (x-forwarded-proto).
+ */
+export function isRequestSecure(req: Request): boolean {
+  try {
+    const proto = req.headers.get('x-forwarded-proto');
+    if (proto) {
+      return proto.split(',')[0].trim().toLowerCase() === 'https';
+    }
+    const url = new URL(req.url);
+    return url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Ambil data user yang sedang login dari cookie sesi di Server Component / Route Handler
  */
 export async function getAuthUser(): Promise<Omit<UserRecord, 'password_hash' | 'salt'> | null> {
@@ -43,6 +60,7 @@ export async function getAuthUser(): Promise<Omit<UserRecord, 'password_hash' | 
     if (!sessionId) return null;
 
     const db = getDb();
+    const nowIso = new Date().toISOString();
     const row = db.prepare(`
       SELECT 
         u.id, 
@@ -51,11 +69,12 @@ export async function getAuthUser(): Promise<Omit<UserRecord, 'password_hash' | 
         u.created_at
       FROM sessions s
       JOIN users u ON u.id = s.user_id
-      WHERE s.id = ? AND s.expires_at > datetime('now', 'localtime')
-    `).get(sessionId) as Omit<UserRecord, 'password_hash' | 'salt'> | undefined;
+      WHERE s.id = ? AND (s.expires_at > ? OR s.expires_at > datetime('now', 'localtime'))
+    `).get(sessionId, nowIso) as Omit<UserRecord, 'password_hash' | 'salt'> | undefined;
 
     return row ?? null;
   } catch {
     return null;
   }
 }
+

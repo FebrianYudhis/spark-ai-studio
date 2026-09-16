@@ -7,6 +7,7 @@ import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
 import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
 import { copyToClipboard } from '@/lib/clipboard';
+import { triggerDownload } from '@/lib/imageHelper';
 
 interface StorageStatsInfo {
   totalFiles: number;
@@ -53,6 +54,7 @@ export default function HistoryTab({
   const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
   const [cleaningStorage, setCleaningStorage] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
   // Menutup menu aksi riwayat saat klik di luar area menu
   useEffect(() => {
@@ -127,6 +129,13 @@ export default function HistoryTab({
           setSelectedItem((prev) => prev ? { ...prev, result_image_url: data.resultImageUrl } : null);
         }
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
+        setBrokenImages((prev) => {
+          const next = new Set(prev);
+          next.delete(data.resultImageUrl);
+          return next;
+        });
+        onUpdateHistory?.();
+        fetchStorageStats();
       } else {
         showError('Gagal Mengambil Gambar', data.error || 'Gagal mengambil ulang gambar dari response payload');
       }
@@ -597,17 +606,17 @@ export default function HistoryTab({
                             const downloadUrl = resultUrls[0];
                             if (!downloadUrl) return null;
                             return (
-                              <a
-                                href={downloadUrl}
-                                download={`ai_${isGen ? 'gen' : 'edit'}_${item.id}.png`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => setOpenMenuId(null)}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  triggerDownload(downloadUrl, `ai_${isGen ? 'gen' : 'edit'}_${item.id}.png`);
+                                }}
                                 className="w-full px-3 py-2 text-left text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
                               >
                                 <Download className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                                 <span>Unduh Hasil</span>
-                              </a>
+                              </button>
                             );
                           })()}
 
@@ -705,7 +714,8 @@ export default function HistoryTab({
                       (() => {
                         const genResultUrls = parseUrls(item.result_image_url);
                         const genImgUrl = genResultUrls[0];
-                        return genImgUrl ? (
+                        const isGenBroken = !genImgUrl || brokenImages.has(genImgUrl);
+                        return !isGenBroken ? (
                           <div className="w-full max-w-[160px] flex flex-col items-center">
                             <button
                               type="button"
@@ -716,6 +726,9 @@ export default function HistoryTab({
                               <img
                                 src={genImgUrl}
                                 alt="Generated Image"
+                                onError={() => {
+                                  if (genImgUrl) setBrokenImages((prev) => new Set(prev).add(genImgUrl));
+                                }}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
                             </button>
@@ -724,7 +737,7 @@ export default function HistoryTab({
                         ) : (
                           <div className="w-full aspect-square max-w-[160px] rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-500 p-2.5 text-center space-y-1.5 shadow-2xs">
                             <ImageIcon className="w-5 h-5 text-slate-400" />
-                            <span className="text-[10px] font-medium text-slate-500">Tidak ada gambar</span>
+                            <span className="text-[10px] font-medium text-slate-500">Gambar belum ada di lokal</span>
                             <button
                               type="button"
                               onClick={() => handleRedownload(item.id)}
@@ -743,6 +756,8 @@ export default function HistoryTab({
                       (() => {
                         const sourceUrls = parseUrls(item.source_image_url);
                         const resultUrls = parseUrls(item.result_image_url);
+                        const editResUrl = resultUrls[0];
+                        const isEditBroken = !editResUrl || brokenImages.has(editResUrl);
 
                         return (
                           <div className="w-full flex items-center justify-center gap-3">
@@ -757,6 +772,9 @@ export default function HistoryTab({
                                   <img
                                     src={sourceUrls[0]}
                                     alt="Source Input"
+                                    onError={() => {
+                                      if (sourceUrls[0]) setBrokenImages((prev) => new Set(prev).add(sourceUrls[0]));
+                                    }}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                   />
                                   {sourceUrls.length > 1 && (
@@ -771,7 +789,7 @@ export default function HistoryTab({
                               </div>
                             )}
 
-                            {resultUrls.length > 0 ? (
+                            {!isEditBroken ? (
                               <div className="flex-1 flex flex-col items-center">
                                 <button
                                   type="button"
@@ -780,8 +798,11 @@ export default function HistoryTab({
                                   title="Klik untuk melihat detail lengkap"
                                 >
                                   <img
-                                    src={resultUrls[0]}
+                                    src={editResUrl}
                                     alt="Edited Result"
+                                    onError={() => {
+                                      if (editResUrl) setBrokenImages((prev) => new Set(prev).add(editResUrl));
+                                    }}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                   />
                                   {resultUrls.length > 1 && (
@@ -796,7 +817,7 @@ export default function HistoryTab({
                               </div>
                             ) : (
                               <div className="flex-1 aspect-square max-w-[130px] rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-500 p-2 text-center space-y-1 shadow-2xs">
-                                <span className="text-[10px] font-medium text-slate-500">Hasil belum ada</span>
+                                <span className="text-[10px] font-medium text-slate-500">Hasil belum di lokal</span>
                                 <button
                                   type="button"
                                   onClick={() => handleRedownload(item.id)}

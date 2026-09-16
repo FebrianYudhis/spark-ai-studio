@@ -6,6 +6,7 @@ import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
 import { formatSafeDate } from '@/lib/models';
 import { copyToClipboard as writeToClipboard } from '@/lib/clipboard';
+import { triggerDownload } from '@/lib/imageHelper';
 
 interface DetailModalProps {
   item: ApiHitRecord | null;
@@ -23,6 +24,7 @@ export default function DetailModal({
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
   const [localResultImageUrl, setLocalResultImageUrl] = useState<string | null>(null);
+  const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
 
   // Reset cache gambar lokal saat item yang dipilih berganti
@@ -84,6 +86,11 @@ export default function DetailModal({
         if (onItemUpdated) {
           onItemUpdated({ ...item, result_image_url: data.resultImageUrl });
         }
+        setBrokenUrls((prev) => {
+          const next = new Set(prev);
+          next.delete(data.resultImageUrl);
+          return next;
+        });
         showToast('Gambar berhasil diambil ulang dan disimpan ke lokal!', 'success');
       } else {
         showError('Gagal Mengambil Gambar', data.error || 'Gagal mengambil ulang gambar dari response payload');
@@ -303,29 +310,35 @@ export default function DetailModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {resultUrls.map((url, idx) => (
                     <div key={idx} className="space-y-2 bg-white p-2 rounded-xl border border-slate-200 shadow-xs">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group relative aspect-square rounded-lg overflow-hidden flex items-center justify-center bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors block"
-                        title="Buka gambar di tab baru"
-                      >
-                        <img
-                          src={url}
-                          alt={`Result ${idx + 1}`}
-                          className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-200"
-                        />
-                      </a>
-                      <div className="pt-1">
+                      {!brokenUrls.has(url) ? (
                         <a
                           href={url}
-                          download={`ai_${item.type}_${item.id}_${idx + 1}.png`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                          className="group relative aspect-square rounded-lg overflow-hidden flex items-center justify-center bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors block"
+                          title="Buka gambar di tab baru"
+                        >
+                          <img
+                            src={url}
+                            alt={`Result ${idx + 1}`}
+                            onError={() => setBrokenUrls((prev) => new Set(prev).add(url))}
+                            className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-200"
+                          />
+                        </a>
+                      ) : (
+                        <div className="aspect-square rounded-lg bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center p-3 text-center space-y-1.5">
+                          <AlertCircle className="w-5 h-5 text-amber-500" />
+                          <span className="text-[11px] font-medium text-slate-500">Gambar belum di lokal</span>
+                        </div>
+                      )}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => triggerDownload(url, `ai_${item.type}_${item.id}_${idx + 1}.png`)}
+                          className="w-full py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                         >
                           <Download className="w-3.5 h-3.5" /> Unduh
-                        </a>
+                        </button>
                       </div>
                     </div>
                   ))}
