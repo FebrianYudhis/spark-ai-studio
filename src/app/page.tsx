@@ -25,6 +25,8 @@ interface AppConfig {
   maskedEnhancerToken?: string;
   enhancerModel?: string;
   enhancerPrompt?: string;
+  retentionDays?: number;
+  retentionMaxItems?: number;
   updatedAt?: string;
 }
 
@@ -33,7 +35,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'generation' | 'edit' | 'history'>('generation');
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'image' | 'enhancer' | 'profile'>('image');
+  const [settingsTab, setSettingsTab] = useState<'image' | 'enhancer' | 'profile' | 'storage'>('image');
   const [historyCount, setHistoryCount] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -169,7 +171,7 @@ export default function Home() {
     showToast('Berhasil keluar dari akun', 'success');
   };
 
-  const handleOpenSettings = (tab: 'image' | 'enhancer' | 'profile' = 'image') => {
+  const handleOpenSettings = (tab: 'image' | 'enhancer' | 'profile' | 'storage' = 'image') => {
     setSettingsTab(tab);
     setIsSettingsOpen(true);
   };

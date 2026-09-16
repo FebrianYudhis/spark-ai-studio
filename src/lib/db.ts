@@ -94,6 +94,8 @@ function initSchema(db: DatabaseSync) {
       enhancer_api_token TEXT NOT NULL DEFAULT '',
       enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
       enhancer_prompt TEXT NOT NULL DEFAULT '',
+      retention_days INTEGER NOT NULL DEFAULT 0,
+      retention_max_items INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
 
@@ -153,6 +155,8 @@ function initSchema(db: DatabaseSync) {
     `ALTER TABLE app_settings ADD COLUMN enhancer_api_token TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE app_settings ADD COLUMN enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini'`,
     `ALTER TABLE app_settings ADD COLUMN enhancer_prompt TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE user_settings ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE user_settings ADD COLUMN retention_max_items INTEGER NOT NULL DEFAULT 0`,
   ];
   for (const sql of alterMigrations) {
     try {
@@ -760,6 +764,8 @@ export interface UserSettings {
   enhancer_api_token: string;
   enhancer_model: string;
   enhancer_prompt: string;
+  retention_days: number;
+  retention_max_items: number;
   updated_at: string;
 }
 
@@ -774,10 +780,12 @@ export function getUserSettings(userId: number): UserSettings {
       INSERT OR IGNORE INTO user_settings (
         user_id, base_url, api_token, generations_model, edits_model,
         enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
+        retention_days, retention_max_items,
         updated_at
       ) VALUES (
         ?, ?, '', ?, ?,
         ?, '', ?, ?,
+        0, 0,
         ?
       )
     `).run(
@@ -802,6 +810,8 @@ export function getUserSettings(userId: number): UserSettings {
       row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
         ? row.enhancer_prompt
         : DEFAULT_ENHANCER_PROMPT,
+    retention_days: Number(row.retention_days ?? 0),
+    retention_max_items: Number(row.retention_max_items ?? 0),
   };
 }
 
@@ -814,6 +824,8 @@ export function updateUserSettings(userId: number, input: {
   enhancer_api_token?: string;
   enhancer_model?: string;
   enhancer_prompt?: string;
+  retention_days?: number;
+  retention_max_items?: number;
 }): UserSettings {
   const current = getUserSettings(userId);
   const nextBaseUrl = input.base_url !== undefined ? input.base_url.trim() : current.base_url;
@@ -824,6 +836,8 @@ export function updateUserSettings(userId: number, input: {
   const nextEnhancerApiToken = input.enhancer_api_token !== undefined ? input.enhancer_api_token.trim() : current.enhancer_api_token;
   const nextEnhancerModel = input.enhancer_model !== undefined ? input.enhancer_model.trim() : current.enhancer_model;
   const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
+  const nextRetentionDays = input.retention_days !== undefined ? Math.max(0, Number(input.retention_days) || 0) : current.retention_days;
+  const nextRetentionMaxItems = input.retention_max_items !== undefined ? Math.max(0, Number(input.retention_max_items) || 0) : current.retention_max_items;
 
   const db = getDb();
   const now = new Date().toISOString();
@@ -838,6 +852,8 @@ export function updateUserSettings(userId: number, input: {
       enhancer_api_token = ?,
       enhancer_model = ?,
       enhancer_prompt = ?,
+      retention_days = ?,
+      retention_max_items = ?,
       updated_at = ?
     WHERE user_id = ?
   `).run(
@@ -849,9 +865,14 @@ export function updateUserSettings(userId: number, input: {
     nextEnhancerApiToken,
     nextEnhancerModel,
     nextEnhancerPrompt,
+    nextRetentionDays,
+    nextRetentionMaxItems,
     now,
     userId
   );
 
   return getUserSettings(userId);
 }
+
+export { applyRetentionPolicy } from './retention';
+

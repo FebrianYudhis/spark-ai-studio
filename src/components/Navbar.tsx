@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Sparkles, Scissors, History, RefreshCw, Settings, User, LogOut } from 'lucide-react';
+import InstallPwaButton from './InstallPwaButton';
 
 interface NavbarProps {
   activeTab: 'generation' | 'edit' | 'history';
@@ -21,7 +22,7 @@ interface NavbarProps {
     username: string;
     display_name?: string | null;
   } | null;
-  onOpenSettings?: (tab?: 'image' | 'enhancer' | 'profile') => void;
+  onOpenSettings?: (tab?: 'image' | 'enhancer' | 'profile' | 'storage') => void;
   onLogout?: () => void;
 }
 
@@ -54,8 +55,12 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1 sm:gap-1.5 p-1 bg-slate-100/90 rounded-xl sm:rounded-2xl border border-slate-200">
+          {/* Right Navigation & Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <InstallPwaButton />
+
+            {/* Navigation Tabs */}
+            <nav className="flex items-center gap-1 sm:gap-1.5 p-1 bg-slate-100/90 rounded-xl sm:rounded-2xl border border-slate-200">
             <button
               onClick={() => setActiveTab('generation')}
               className={`px-2.5 sm:px-3.5 md:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
@@ -157,6 +162,7 @@ export default function Navbar({
               </div>
             )}
           </nav>
+        </div>
 
         </div>
       </div>

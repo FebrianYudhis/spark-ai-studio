@@ -1,25 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, HardDrive, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreVertical } from 'lucide-react';
+import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreVertical } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
 import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
 import { copyToClipboard } from '@/lib/clipboard';
 import { triggerDownload } from '@/lib/imageHelper';
-
-interface StorageStatsInfo {
-  totalFiles: number;
-  totalSizeBytes: number;
-  activeFiles: number;
-  activeSizeBytes: number;
-  orphanedFiles: number;
-  orphanedSizeBytes: number;
-  formattedTotalSize: string;
-  formattedActiveSize: string;
-  formattedOrphanedSize: string;
-}
 
 interface HistoryTabProps {
   onSelectPrompt: (prompt: string, model: string, type: 'generation' | 'edit') => void;
@@ -51,8 +39,6 @@ export default function HistoryTab({
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [redownloadingId, setRedownloadingId] = useState<number | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
-  const [storageStats, setStorageStats] = useState<StorageStatsInfo | null>(null);
-  const [cleaningStorage, setCleaningStorage] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
@@ -135,7 +121,6 @@ export default function HistoryTab({
           return next;
         });
         onUpdateHistory?.();
-        fetchStorageStats();
       } else {
         showError('Gagal Mengambil Gambar', data.error || 'Gagal mengambil ulang gambar dari response payload');
       }
@@ -145,20 +130,6 @@ export default function HistoryTab({
       setRedownloadingId(null);
     }
   };
-
-  const fetchStorageStats = useCallback(async () => {
-    try {
-      const res = await fetch('/api/storage');
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.success && data.stats) {
-          setStorageStats(data.stats);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch storage stats:', err);
-    }
-  }, []);
 
   const fetchHistory = useCallback(async (overridePage?: number) => {
     setLoading(true);
@@ -170,10 +141,7 @@ export default function HistoryTab({
       params.set('limit', String(limit));
       if (debouncedSearch) params.set('search', debouncedSearch);
 
-      const [res] = await Promise.all([
-        fetch(`/api/history?${params.toString()}`),
-        fetchStorageStats(),
-      ]);
+      const res = await fetch(`/api/history?${params.toString()}`);
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
         console.error('Failed to fetch history, HTTP status:', res.status, errData);
@@ -197,7 +165,7 @@ export default function HistoryTab({
     } finally {
       setLoading(false);
     }
-  }, [filterType, page, limit, debouncedSearch, fetchStorageStats]);
+  }, [filterType, page, limit, debouncedSearch]);
 
   useEffect(() => {
     fetchHistory();
@@ -223,89 +191,12 @@ export default function HistoryTab({
         } else {
           fetchHistory();
         }
-        fetchStorageStats();
       } else {
         showError('Gagal Menghapus', 'Gagal menghapus riwayat dari database');
       }
     } catch (err) {
       console.error('Delete error:', err);
       showError('Koneksi Gagal', 'Koneksi ke server gagal');
-    }
-  };
-
-  const handleClearAll = async () => {
-    const label = filterType === 'all' ? 'semua riwayat' : `semua riwayat ${filterType}`;
-    const confirmed = await showConfirm({
-      title: 'Hapus Semua Riwayat?',
-      text: `Yakin ingin menghapus ${label}? Seluruh file gambar terkait pada penyimpanan disk juga akan dibersihkan otomatis. Tindakan ini tidak dapat dibatalkan.`,
-      confirmButtonText: 'Ya, Hapus Semua',
-      cancelButtonText: 'Batal',
-      isDanger: true,
-    });
-    if (!confirmed) return;
-
-    try {
-      const url = filterType === 'all' ? '/api/history' : `/api/history?type=${filterType}`;
-      const res = await fetch(url, { method: 'DELETE' });
-      if (res.ok) {
-        setItems([]);
-        showToast('Semua riwayat dan file gambarnya berhasil dibersihkan', 'success');
-        onUpdateHistory?.();
-        if (page !== 1) {
-          setPage(1);
-        } else {
-          fetchHistory(1);
-        }
-        fetchStorageStats();
-      } else {
-        showError('Gagal Menghapus', 'Gagal membersihkan riwayat');
-      }
-    } catch (err) {
-      console.error('Clear error:', err);
-      showError('Koneksi Gagal', 'Koneksi ke server gagal');
-    }
-  };
-
-  const handleManageStorage = async () => {
-    if (!storageStats) {
-      await fetchStorageStats();
-      return;
-    }
-
-    if (storageStats.orphanedFiles > 0) {
-      const confirmed = await showConfirm({
-        title: 'Bersihkan File Sampah?',
-        text: `Terdeteksi ${storageStats.orphanedFiles} file sampah / orphaned (${storageStats.formattedOrphanedSize}) dari total kapasitas ${storageStats.formattedTotalSize} (${storageStats.totalFiles} file). Ingin membersihkan file tak terpakai ini sekarang?`,
-        confirmButtonText: 'Bersihkan File Sampah',
-        cancelButtonText: 'Batal',
-        isDanger: false,
-      });
-      if (!confirmed) return;
-
-      setCleaningStorage(true);
-      try {
-        const res = await fetch('/api/storage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'clean_orphaned' }),
-        });
-        const data = await res.json().catch(() => ({ success: false, error: 'Respon server tidak valid' }));
-        if (res.ok && data.success) {
-          showToast(data.message, 'success');
-          fetchStorageStats();
-        } else {
-          showError('Gagal', data.error || 'Gagal membersihkan file sampah');
-        }
-      } catch {
-        showError('Koneksi Gagal', 'Koneksi ke server gagal');
-      } finally {
-        setCleaningStorage(false);
-      }
-    } else {
-      await showSuccess(
-        'Penyimpanan Disk Bersih',
-        `Total kapasitas: ${storageStats.formattedTotalSize} (${storageStats.totalFiles} file). Seluruh file terhubung aktif dengan riwayat Anda dan tidak ada file sampah tersisa.`
-      );
     }
   };
 
@@ -408,46 +299,13 @@ export default function HistoryTab({
           </div>
 
           <div className="flex items-center gap-2">
-            {storageStats && (
-              <button
-                type="button"
-                onClick={handleManageStorage}
-                disabled={cleaningStorage}
-                className={`flex-1 sm:flex-initial px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border shadow-2xs cursor-pointer ${
-                  storageStats.orphanedFiles > 0
-                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                }`}
-                title="Klik untuk melihat detail kapasitas disk dan membersihkan file sampah"
-              >
-                <HardDrive className={`w-3.5 h-3.5 shrink-0 ${storageStats.orphanedFiles > 0 ? 'text-amber-600 animate-pulse' : 'text-slate-500'}`} />
-                <span>Disk: {storageStats.formattedTotalSize}</span>
-                {storageStats.orphanedFiles > 0 && (
-                  <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded-md text-[10px] font-bold">
-                    {storageStats.orphanedFiles} sampah
-                  </span>
-                )}
-              </button>
-            )}
-
             <button
               onClick={() => fetchHistory()}
-              className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200 transition-colors shrink-0 cursor-pointer"
-              title="Muat Ulang"
+              className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200 transition-colors shrink-0 cursor-pointer shadow-2xs"
+              title="Muat Ulang Riwayat"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-
-            {items.length > 0 && (
-              <button
-                onClick={handleClearAll}
-                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
-                title="Bersihkan Semua"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden xs:inline">Bersihkan</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

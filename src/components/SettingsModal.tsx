@@ -22,8 +22,12 @@ import {
   User,
   LogOut,
   Lock,
+  HardDrive,
+  Trash2,
+  Clock,
+  ShieldCheck,
 } from 'lucide-react';
-import { showToast, showError, showConfirm } from '@/lib/swal';
+import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
 import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
 
 export interface AppConfigData {
@@ -39,6 +43,8 @@ export interface AppConfigData {
   maskedEnhancerToken?: string;
   enhancerModel?: string;
   enhancerPrompt?: string;
+  retentionDays?: number;
+  retentionMaxItems?: number;
   updatedAt?: string;
 }
 
@@ -62,12 +68,14 @@ interface SettingsModalProps {
     enhancerToken?: string;
     enhancerModel?: string;
     enhancerPrompt?: string;
+    retentionDays?: number;
+    retentionMaxItems?: number;
     updatedAt?: string;
   } | null;
   currentUser?: UserProfileData | null;
   onUserProfileUpdated?: (user: UserProfileData) => void;
   onLogout?: () => void;
-  initialTab?: 'image' | 'enhancer' | 'profile';
+  initialTab?: 'image' | 'enhancer' | 'profile' | 'storage';
 }
 
 export default function SettingsModal({
@@ -80,7 +88,7 @@ export default function SettingsModal({
   onLogout,
   initialTab = 'image',
 }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'image' | 'enhancer' | 'profile'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'image' | 'enhancer' | 'profile' | 'storage'>(initialTab);
 
   // Image Studio Settings State
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
@@ -95,6 +103,24 @@ export default function SettingsModal({
   const [enhancerModel, setEnhancerModel] = useState('gpt-4o-mini');
   const [enhancerPrompt, setEnhancerPrompt] = useState(DEFAULT_ENHANCER_PROMPT);
   const [showEnhancerToken, setShowEnhancerToken] = useState(false);
+
+  // Storage & Retention State
+  const [retentionDays, setRetentionDays] = useState(0);
+  const [retentionMaxItems, setRetentionMaxItems] = useState(0);
+  const [storageStats, setStorageStats] = useState<{
+    totalFiles: number;
+    totalSizeBytes: number;
+    activeFiles: number;
+    activeSizeBytes: number;
+    orphanedFiles: number;
+    orphanedSizeBytes: number;
+    formattedTotalSize: string;
+    formattedActiveSize: string;
+    formattedOrphanedSize: string;
+  } | null>(null);
+  const [loadingStorage, setLoadingStorage] = useState(false);
+  const [applyingRetention, setApplyingRetention] = useState(false);
+  const [cleaningOrphaned, setCleaningOrphaned] = useState(false);
 
   // Profile Management State
   const [profileDisplayName, setProfileDisplayName] = useState(currentUser?.display_name || currentUser?.username || '');
@@ -111,6 +137,21 @@ export default function SettingsModal({
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchStorageStats = async () => {
+    try {
+      setLoadingStorage(true);
+      const res = await fetch(`/api/storage?t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && data.stats) {
+        setStorageStats(data.stats);
+      }
+    } catch (err) {
+      console.error('Failed to fetch storage stats:', err);
+    } finally {
+      setLoadingStorage(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -135,6 +176,8 @@ export default function SettingsModal({
             ? currentConfig.enhancerPrompt
             : DEFAULT_ENHANCER_PROMPT
         );
+        setRetentionDays(currentConfig.retentionDays ?? 0);
+        setRetentionMaxItems(currentConfig.retentionMaxItems ?? 0);
       } else {
         // Fetch if not provided
         fetch(`/api/config?t=${Date.now()}`, { cache: 'no-store' })
@@ -161,10 +204,13 @@ export default function SettingsModal({
                   ? data.enhancerPrompt
                   : DEFAULT_ENHANCER_PROMPT
               );
+              setRetentionDays(data.retentionDays ?? 0);
+              setRetentionMaxItems(data.retentionMaxItems ?? 0);
             }
           })
           .catch(console.error);
       }
+      fetchStorageStats();
     }
   }, [isOpen, currentConfig]);
 
@@ -268,6 +314,76 @@ export default function SettingsModal({
     onLogout?.();
   };
 
+  const handleApplyRetention = async () => {
+    const desc = retentionDays > 0 || retentionMaxItems > 0
+      ? `Sistem akan menghapus riwayat yang lebih tua dari ${retentionDays > 0 ? `${retentionDays} hari` : 'waktu'} atau melampaui ${retentionMaxItems > 0 ? `${retentionMaxItems} item` : 'kuota'} sesuai aturan yang Anda tetapkan.`
+      : 'Aturan retensi saat ini diset ke "Selamanya" dan "Tanpa Batas".';
+
+    if (retentionDays <= 0 && retentionMaxItems <= 0) {
+      showToast('Kebijakan retensi diset Simpan Selamanya. Ubah batas hari atau jumlah item untuk menerapkan pembersihan.', 'info');
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: 'Terapkan Retensi Sekarang?',
+      text: `${desc} File gambar fisik yang sudah tidak dipakai juga akan dihapus. Lanjutkan?`,
+      confirmButtonText: 'Ya, Terapkan',
+      cancelButtonText: 'Batal',
+    });
+    if (!confirmed) return;
+
+    try {
+      setApplyingRetention(true);
+      const res = await fetch('/api/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply_retention' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showSuccess('Retensi Berhasil', data.message || 'Kebijakan retensi berhasil diterapkan.');
+        fetchStorageStats();
+      } else {
+        showError('Gagal Menerapkan Retensi', data.error || 'Terjadi kesalahan sistem.');
+      }
+    } catch (err) {
+      showError('Gagal Menerapkan Retensi', err instanceof Error ? err.message : String(err));
+    } finally {
+      setApplyingRetention(false);
+    }
+  };
+
+  const handleCleanOrphaned = async () => {
+    const confirmed = await showConfirm({
+      title: 'Bersihkan File Sampah?',
+      text: 'Sistem akan memindai folder uploads dan menghapus file gambar yatim (orphaned) yang tidak lagi terhubung ke riwayat manapun (dengan proteksi grace period 15 menit).',
+      confirmButtonText: 'Bersihkan Sekarang',
+      cancelButtonText: 'Batal',
+      isDanger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      setCleaningOrphaned(true);
+      const res = await fetch('/api/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clean_orphaned' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showSuccess('Pembersihan Selesai', data.message || 'File sampah berhasil dibersihkan.');
+        fetchStorageStats();
+      } else {
+        showError('Gagal Membersihkan', data.error || 'Terjadi kesalahan');
+      }
+    } catch (err) {
+      showError('Gagal Membersihkan', err instanceof Error ? err.message : String(err));
+    } finally {
+      setCleaningOrphaned(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -287,6 +403,8 @@ export default function SettingsModal({
           enhancerToken: enhancerToken.trim(),
           enhancerModel: enhancerModel.trim(),
           enhancerPrompt: enhancerPrompt.trim(),
+          retentionDays,
+          retentionMaxItems,
         }),
       });
 
@@ -502,6 +620,21 @@ export default function SettingsModal({
           >
             <User className="w-4 h-4 text-indigo-600" />
             <span>Profile</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('storage');
+              fetchStorageStats();
+            }}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'storage'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <HardDrive className="w-4 h-4 text-emerald-600" />
+            <span>Penyimpanan</span>
           </button>
         </div>
 
@@ -995,6 +1128,142 @@ export default function SettingsModal({
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 4: Storage & Retensi */}
+          {activeTab === 'storage' && (
+            <div className="space-y-6">
+              {/* Box 1: Info & Statistik Penggunaan Disk */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800">Kapasitas Penyimpanan Disk</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchStorageStats}
+                    disabled={loadingStorage}
+                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                    title="Muat ulang statistik penyimpanan"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingStorage ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Terpakai</p>
+                    <p className="text-base sm:text-lg font-bold text-slate-900 mt-0.5">
+                      {storageStats?.formattedTotalSize || '0 B'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{storageStats?.totalFiles ?? 0} berkas gambar</p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Gambar Aktif</p>
+                    <p className="text-base sm:text-lg font-bold text-emerald-700 mt-0.5">
+                      {storageStats?.formattedActiveSize || '0 B'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{storageStats?.activeFiles ?? 0} terhubung riwayat</p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <p className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider">File Sampah (Orphan)</p>
+                    <p className="text-base sm:text-lg font-bold text-amber-700 mt-0.5">
+                      {storageStats?.formattedOrphanedSize || '0 B'}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{storageStats?.orphanedFiles ?? 0} tidak bertuan</p>
+                  </div>
+                </div>
+
+                {(storageStats?.orphanedFiles ?? 0) > 0 && (
+                  <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-200">
+                    <p className="text-xs text-slate-600">
+                      Terdapat <strong className="text-slate-800">{storageStats?.orphanedFiles} file sampah</strong> ({storageStats?.formattedOrphanedSize}) yang tidak lagi tercatat di riwayat.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCleanOrphaned}
+                      disabled={cleaningOrphaned}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{cleaningOrphaned ? 'Membersihkan...' : 'Bersihkan Sampah'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Box 2: Aturan Kebijakan Retensi Otomatis */}
+              <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900">Kebijakan Retensi Riwayat Otomatis</h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Pilihan Masa Simpan Hari */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                      <span>Masa Simpan (Umur Maksimal)</span>
+                    </label>
+                    <select
+                      value={retentionDays}
+                      onChange={(e) => setRetentionDays(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all cursor-pointer"
+                    >
+                      <option value={0}>Simpan Selamanya (Nonaktif)</option>
+                      <option value={7}>7 Hari</option>
+                      <option value={14}>14 Hari</option>
+                      <option value={30}>30 Hari (Disarankan)</option>
+                      <option value={60}>60 Hari</option>
+                      <option value={90}>90 Hari</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500">
+                      Riwayat yang lebih tua dari batas hari ini akan otomatis dibersihkan.
+                    </p>
+                  </div>
+
+                  {/* Pilihan Batas Kuota Jumlah Item */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                      <span>Batas Maksimal Jumlah Item</span>
+                    </label>
+                    <select
+                      value={retentionMaxItems}
+                      onChange={(e) => setRetentionMaxItems(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all cursor-pointer"
+                    >
+                      <option value={0}>Tanpa Batas Kuota (Nonaktif)</option>
+                      <option value={50}>Maksimal 50 Item Terbaru</option>
+                      <option value={100}>Maksimal 100 Item Terbaru (Disarankan)</option>
+                      <option value={250}>Maksimal 250 Item Terbaru</option>
+                      <option value={500}>Maksimal 500 Item Terbaru</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500">
+                      Jika jumlah riwayat melebihi kuota ini, item yang paling lama akan dihapus.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50 -mx-4 sm:-mx-5 -mb-4 sm:-mb-5 p-4 sm:p-5 rounded-b-xl sm:rounded-b-2xl">
+                  <div className="flex items-center gap-2 text-slate-600 text-xs">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Aturan retensi otomatis dieksekusi di background saat Anda login.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyRetention}
+                    disabled={applyingRetention || (retentionDays === 0 && retentionMaxItems === 0)}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs shrink-0"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${applyingRetention ? 'animate-spin' : ''}`} />
+                    <span>{applyingRetention ? 'Menerapkan...' : 'Terapkan Retensi Sekarang'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

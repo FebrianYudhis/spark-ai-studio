@@ -24,6 +24,15 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Spark AI Studio - Image Generations & Edits Manager",
   description: "Studio AI Image Generations dan Edits dengan SQLite History & Local Image Persistence",
+  applicationName: "Spark AI Studio",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Spark AI Studio",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export default function RootLayout({

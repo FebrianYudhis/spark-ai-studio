@@ -92,6 +92,10 @@ export async function GET(req: NextRequest) {
       enhancerModel: settings.enhancer_model,
       enhancerPrompt: settings.enhancer_prompt,
 
+      // Storage & Retention Settings
+      retentionDays: settings.retention_days ?? 0,
+      retentionMaxItems: settings.retention_max_items ?? 0,
+
       updatedAt: settings.updated_at,
     },
     { headers: NO_CACHE_HEADERS }
@@ -121,6 +125,8 @@ export async function POST(req: NextRequest) {
     const enhancerToken = source.enhancerToken ?? source.enhancer_api_token;
     const enhancerModel = source.enhancerModel ?? source.enhancer_model;
     const enhancerPrompt = source.enhancerPrompt ?? source.enhancer_prompt;
+    const retentionDays = source.retentionDays !== undefined ? Number(source.retentionDays) : (source.retention_days !== undefined ? Number(source.retention_days) : undefined);
+    const retentionMaxItems = source.retentionMaxItems !== undefined ? Number(source.retentionMaxItems) : (source.retention_max_items !== undefined ? Number(source.retention_max_items) : undefined);
 
     const payload = {
       base_url: baseUrl,
@@ -131,6 +137,8 @@ export async function POST(req: NextRequest) {
       enhancer_api_token: enhancerToken,
       enhancer_model: enhancerModel,
       enhancer_prompt: enhancerPrompt,
+      retention_days: retentionDays,
+      retention_max_items: retentionMaxItems,
     };
 
     const updated = updateUserSettings(user.id, payload);
@@ -171,6 +179,9 @@ export async function POST(req: NextRequest) {
           maskedEnhancerToken,
           enhancerModel: updated.enhancer_model,
           enhancerPrompt: updated.enhancer_prompt,
+
+          retentionDays: updated.retention_days ?? 0,
+          retentionMaxItems: updated.retention_max_items ?? 0,
 
           updatedAt: updated.updated_at,
         },

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { getUserByUsername, createSession } from '@/lib/db';
+import { getUserByUsername, createSession, applyRetentionPolicy } from '@/lib/db';
 import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
 
@@ -73,6 +73,11 @@ export async function POST(req: Request) {
     // Login sukses: reset status rate limiter
     resetRateLimit(ipKey);
     resetRateLimit(userKey);
+
+    // Jalankan pembersihan retensi otomatis di background
+    try {
+      applyRetentionPolicy(user.id);
+    } catch {}
 
     // Buat token sesi baru
     const sessionId = generateSessionId();

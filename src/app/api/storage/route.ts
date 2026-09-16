@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
+import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads, applyRetentionPolicy } from '@/lib/db';
 import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
 
@@ -79,6 +79,19 @@ export async function POST(req: NextRequest) {
         message: details.length > 0
           ? `Berhasil membersihkan: ${details.join(', ')}.`
           : 'Penyimpanan dan database sudah bersih. Tidak ditemukan file sampah atau data redundan.',
+      });
+    }
+
+    if (action === 'apply_retention') {
+      const retentionRes = applyRetentionPolicy(user.id);
+      return NextResponse.json({
+        success: true,
+        action: 'apply_retention',
+        deletedCount: retentionRes.deletedHits,
+        freedBytes: retentionRes.freedBytes,
+        formattedFreedSize: formatBytes(retentionRes.freedBytes),
+        deletedFiles: retentionRes.deletedFiles,
+        message: retentionRes.message,
       });
     }
 
