@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
+import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
 import { validateImageSize, validateImageQuality } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 
@@ -130,6 +131,11 @@ export async function POST(req: NextRequest) {
       errorMessage = sanitized.errorMessage || (responseData?.error as { message?: string })?.message || `HTTP ${statusCode}: Gagal memproses generasi gambar`;
     }
 
+    // Sanitasi payload response HANYA jika file gambar lokal telah dipastikan berhasil disimpan di disk
+    const sanitizedResponsePayload = (resultImageUrl && resultImageUrl.startsWith('/uploads/'))
+      ? sanitizeResponsePayloadAfterSave(responseData, [resultImageUrl])
+      : responseData;
+
     // Save hit to SQLite
     const historyId = saveApiHit({
       user_id: user.id,
@@ -140,7 +146,7 @@ export async function POST(req: NextRequest) {
       size,
       request_payload: requestPayload,
       status_code: statusCode,
-      response_payload: responseData,
+      response_payload: sanitizedResponsePayload,
       result_image_url: resultImageUrl,
       error_message: errorMessage,
     });
@@ -154,7 +160,7 @@ export async function POST(req: NextRequest) {
       targetUrl,
       requestPayload,
       resultImageUrl,
-      response: responseData,
+      response: sanitizedResponsePayload,
       errorMessage,
     }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400) });
 

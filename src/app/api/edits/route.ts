@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
+import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
 import { validateImageSize, validateImageQuality, validateInputFidelity } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import path from 'node:path';
@@ -215,6 +216,12 @@ export async function POST(req: NextRequest) {
 
     const primaryResultImageUrl = savedResultUrls.length > 0 ? savedResultUrls[0] : undefined;
 
+    // Sanitasi payload response HANYA jika file gambar lokal telah dipastikan tersimpan di disk
+    const hasSavedLocal = savedResultUrls.some((u) => u.startsWith('/uploads/'));
+    const sanitizedResponseData = hasSavedLocal
+      ? sanitizeResponsePayloadAfterSave(responseData, savedResultUrls)
+      : responseData;
+
     // Simpan ke database SQLite
     const historyId = saveApiHit({
       user_id: user.id,
@@ -229,7 +236,7 @@ export async function POST(req: NextRequest) {
       request_payload: requestSummary,
       status_code: statusCode,
       response_payload: {
-        ...responseData,
+        ...(typeof sanitizedResponseData === 'object' && sanitizedResponseData !== null ? sanitizedResponseData : {}),
         savedResultUrls,
       },
       result_image_url: savedResultUrls.length > 1 ? JSON.stringify(savedResultUrls) : primaryResultImageUrl,

@@ -2,6 +2,7 @@ import './suppressWarnings';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
+import { cleanStoredPayloadsInDb } from './payloadSanitizer';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'spark_ai_studio.db');
@@ -204,6 +205,15 @@ function initSchema(db: DatabaseSync) {
       DELETE FROM sessions 
       WHERE expires_at <= ? OR expires_at <= datetime('now', 'localtime')
     `).run(nowIso);
+  } catch {}
+
+  // Pembersihan otomatis payload Base64 raksasa pada riwayat lama jika file gambar sudah tersimpan di /uploads/
+  try {
+    const result = cleanStoredPayloadsInDb(db);
+    if (result.cleanedCount > 0) {
+      db.exec('VACUUM;');
+      console.log(`[db] Berhasil membersihkan Base64 dari ${result.cleanedCount} riwayat lama (${(result.freedBytes / 1024 / 1024).toFixed(2)} MB dibebaskan).`);
+    }
   } catch {}
 }
 
@@ -701,6 +711,13 @@ export function cleanExpiredSessions(): number {
     console.error('[db] Gagal membersihkan sesi kadaluarsa:', err);
     return 0;
   }
+}
+
+/**
+ * Membersihkan payload Base64 raksasa pada riwayat lama jika file gambar sudah tersimpan di disk.
+ */
+export function cleanStoredPayloads(): { cleanedCount: number; freedBytes: number } {
+  return cleanStoredPayloadsInDb(getDb());
 }
 
 export function createSession(sessionId: string, userId: number, daysValid: number = 30): void {

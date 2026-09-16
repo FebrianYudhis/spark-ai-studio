@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllActiveImageUrls, cleanExpiredSessions } from '@/lib/db';
+import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
 import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
 
@@ -54,20 +54,31 @@ export async function POST(req: NextRequest) {
       const activeUrls = getAllActiveImageUrls();
       const result = cleanupOrphanedFiles(activeUrls);
       const cleanedSessionsCount = cleanExpiredSessions();
+      const payloadCleanResult = cleanStoredPayloads();
 
-      const sessionNotice = cleanedSessionsCount > 0 ? ` & ${cleanedSessionsCount} sesi kadaluarsa dibersihkan` : '';
+      const details: string[] = [];
+      if (result.deletedCount > 0) {
+        details.push(`${result.deletedCount} file sampah disk (${formatBytes(result.freedBytes)})`);
+      }
+      if (cleanedSessionsCount > 0) {
+        details.push(`${cleanedSessionsCount} sesi kadaluarsa`);
+      }
+      if (payloadCleanResult.cleanedCount > 0) {
+        details.push(`${payloadCleanResult.cleanedCount} payload Base64 riwayat (${formatBytes(payloadCleanResult.freedBytes)})`);
+      }
 
       return NextResponse.json({
         success: true,
         action: 'clean_orphaned',
         deletedCount: result.deletedCount,
-        freedBytes: result.freedBytes,
-        formattedFreedSize: formatBytes(result.freedBytes),
+        freedBytes: result.freedBytes + payloadCleanResult.freedBytes,
+        formattedFreedSize: formatBytes(result.freedBytes + payloadCleanResult.freedBytes),
         deletedFiles: result.deletedFiles,
         cleanedSessionsCount,
-        message: result.deletedCount > 0
-          ? `Berhasil membersihkan ${result.deletedCount} file sampah tak terpakai (${formatBytes(result.freedBytes)} ruang dibebaskan)${sessionNotice}.`
-          : `Penyimpanan sudah bersih${sessionNotice ? ` (${cleanedSessionsCount} sesi kadaluarsa dibersihkan)` : '. Tidak ditemukan file sampah tak terpakai.'}`,
+        cleanedPayloadsCount: payloadCleanResult.cleanedCount,
+        message: details.length > 0
+          ? `Berhasil membersihkan: ${details.join(', ')}.`
+          : 'Penyimpanan dan database sudah bersih. Tidak ditemukan file sampah atau data redundan.',
       });
     }
 
