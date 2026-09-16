@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, X, ExternalLink } from 'lucide-react';
+import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, X, ExternalLink, FileText } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import { triggerDownload } from '@/lib/imageHelper';
+import ErrorDetailModal, { ErrorDetailData } from './ErrorDetailModal';
 import {
   AVAILABLE_MODELS,
   AvailableModel,
@@ -82,6 +83,8 @@ export default function GenerationsTab({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<ErrorDetailData | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [result, setResult] = useState<{
     resultImageUrl?: string;
     statusCode: number;
@@ -234,48 +237,85 @@ export default function GenerationsTab({
 
     setLoading(true);
     setError(null);
+    setErrorDetail(null);
+    setShowErrorModal(false);
     setResult(null);
     setIsMenuOpen(false);
     setIsPreviewOpen(false);
+
+    const forwardPayload = {
+      model: model.trim(),
+      prompt: prompt.trim(),
+      size: size.trim(),
+      quality,
+      output_format: 'png',
+    };
+
+    let rawText = '';
+    let currentStatusCode = 0;
 
     try {
       const res = await fetch('/api/generations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: model.trim(),
-          prompt: prompt.trim(),
-          size: size.trim(),
-          quality,
-          output_format: 'png',
-        }),
+        body: JSON.stringify(forwardPayload),
       });
 
-      const rawText = await res.text();
+      currentStatusCode = res.status;
+      rawText = await res.text();
       let data: Record<string, unknown> = {};
       try {
         data = JSON.parse(rawText);
       } catch {
         let fallbackMsg = `HTTP ${res.status}: Gagal memproses request pembuatan gambar`;
         if (res.status === 502 || res.status === 504 || res.status === 524) {
-          fallbackMsg = `Koneksi ke gateway AI mengalami timeout/gangguan (HTTP ${res.status}). Silakan coba lagi.`;
+          fallbackMsg = `Koneksi ke gateway AI mengalami timeout/gangguan (HTTP ${res.status}). Silakan coba lagi sesaat lagi.`;
         } else {
           const titleMatch = rawText.match(/<title[^>]*>([^<]+)<\/title>/i);
           if (titleMatch && titleMatch[1]) {
             fallbackMsg = `Server error (${titleMatch[1].trim()})`;
           }
         }
-        throw new Error(fallbackMsg);
+        setError(fallbackMsg);
+        setErrorDetail({
+          title: 'Gagal Menghasilkan Gambar',
+          statusCode: res.status,
+          errorMessage: fallbackMsg,
+          endpoint: '/api/generations',
+          requestPayload: forwardPayload,
+          rawResponseText: rawText,
+        });
+        showToast(fallbackMsg, 'error');
+        return;
       }
 
       if (!res.ok || !data.success) {
         const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses request`;
         setError(msg);
+        setErrorDetail({
+          title: 'Gagal Menghasilkan Gambar',
+          statusCode: (data.statusCode as number) || res.status,
+          errorMessage: msg,
+          endpoint: (data.targetUrl as string) || '/api/generations',
+          requestPayload: (data.requestPayload as unknown) || forwardPayload,
+          responsePayload: data.response || data,
+          rawResponseText: rawText,
+          historyId: data.historyId as number | undefined,
+        });
         showToast(msg, 'error');
-      } else {
-        showToast('Gambar berhasil di-generate!', 'success');
+        if (data.historyId) {
+          setResult({
+            resultImageUrl: (data.resultImageUrl as string) || (data.imageUrl as string),
+            statusCode: res.status,
+            requestPayload: (data.requestPayload as Record<string, unknown>) || {},
+            response: (data.response as Record<string, unknown>) || (data.rawResponse as Record<string, unknown>) || data,
+            historyId: data.historyId as number | undefined,
+          });
+        }
+        return;
       }
 
+      showToast('Gambar berhasil di-generate!', 'success');
       setResult({
         resultImageUrl: (data.resultImageUrl as string) || (data.imageUrl as string),
         statusCode: res.status,
@@ -284,12 +324,18 @@ export default function GenerationsTab({
         historyId: data.historyId as number | undefined,
       });
 
-      if (res.ok && data.success) {
-        onSuccess();
-      }
+      onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kegagalan jaringan saat menghubungi server lokal';
       setError(msg);
+      setErrorDetail({
+        title: 'Kesalahan Jaringan / Server',
+        statusCode: currentStatusCode || undefined,
+        errorMessage: msg,
+        endpoint: '/api/generations',
+        requestPayload: forwardPayload,
+        rawResponseText: rawText || (err instanceof Error ? err.stack || err.message : String(err)),
+      });
       showToast(msg, 'error');
     } finally {
       setLoading(false);
@@ -731,10 +777,27 @@ export default function GenerationsTab({
                 </div>
               </div>
             ) : error ? (
-              <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-800">
-                <AlertTriangle className="w-10 h-10 text-rose-600" />
-                <p className="text-sm font-semibold">Gagal Menghasilkan Gambar</p>
-                <p className="text-xs text-rose-700 max-w-sm">{error}</p>
+              <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-rose-800 shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shadow-xs">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1 max-w-md">
+                  <p className="text-sm font-bold text-rose-900">Gagal Menghasilkan Gambar</p>
+                  <p className="text-xs text-rose-700 leading-relaxed break-words">{error}</p>
+                </div>
+                {errorDetail && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowErrorModal(true)}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs hover:shadow-md cursor-pointer"
+                      title="Lihat detail respons mentah dari server AI"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Lihat Detail Respons</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : result?.resultImageUrl ? (
               <div className="flex-1 flex flex-col space-y-4">
@@ -989,6 +1052,13 @@ export default function GenerationsTab({
           </div>
         </div>
       )}
+
+      {/* Modal Detail Respons Error */}
+      <ErrorDetailModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        data={errorDetail}
+      />
     </div>
   );
 }

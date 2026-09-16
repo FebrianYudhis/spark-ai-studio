@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Scissors, UploadCloud, Plus, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive, MoreVertical } from 'lucide-react';
+import { Scissors, UploadCloud, Plus, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive, MoreVertical, FileText } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import { isSupportedImageFile, compressImageIfOver10MB, triggerDownload } from '@/lib/imageHelper';
+import ErrorDetailModal, { ErrorDetailData } from './ErrorDetailModal';
 import {
   AVAILABLE_MODELS,
   AvailableModel,
@@ -99,6 +100,8 @@ export default function EditsTab({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<ErrorDetailData | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [result, setResult] = useState<{
     sourceImageUrls?: string[];
     resultImageUrl?: string;
@@ -577,7 +580,23 @@ export default function EditsTab({
 
     setLoading(true);
     setError(null);
+    setErrorDetail(null);
+    setShowErrorModal(false);
     setResult(null);
+
+    const requestSummary = {
+      model: model.trim(),
+      prompt: prompt.trim(),
+      size: size.trim(),
+      quality,
+      output_format: 'png',
+      input_fidelity: inputFidelity,
+      primaryImage: primaryImage.file.name,
+      additionalImages: additionalImages.map((img) => img.file.name),
+    };
+
+    let rawText = '';
+    let currentStatusCode = 0;
 
     try {
       const formData = new FormData();
@@ -604,7 +623,8 @@ export default function EditsTab({
         body: formData,
       });
 
-      const rawText = await res.text();
+      currentStatusCode = res.status;
+      rawText = await res.text();
       let data: Record<string, unknown> = {};
       try {
         data = JSON.parse(rawText);
@@ -621,24 +641,53 @@ export default function EditsTab({
             fallbackMsg = `Server error (${titleMatch[1].trim()})`;
           }
         }
-        throw new Error(fallbackMsg);
+        setError(fallbackMsg);
+        setErrorDetail({
+          title: 'Gagal Mengedit Gambar',
+          statusCode: res.status,
+          errorMessage: fallbackMsg,
+          endpoint: '/api/edits',
+          requestPayload: requestSummary,
+          rawResponseText: rawText,
+        });
+        showToast(fallbackMsg, 'error');
+        return;
       }
 
       if (!res.ok || !data.success) {
         const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses edit gambar`;
         setError(msg);
+        setErrorDetail({
+          title: 'Gagal Mengedit Gambar',
+          statusCode: (data.statusCode as number) || res.status,
+          errorMessage: msg,
+          endpoint: (data.targetUrl as string) || '/api/edits',
+          requestPayload: (data.requestSummary as unknown) || requestSummary,
+          responsePayload: data.response || data,
+          rawResponseText: rawText,
+          historyId: data.historyId as number | undefined,
+        });
         showToast(msg, 'error');
         if (data.historyId || data.requestSummary) {
           setResult(data as any);
         }
-      } else {
-        showToast('Gambar berhasil diedit!', 'success');
-        setResult(data as any);
-        onSuccess();
+        return;
       }
+
+      showToast('Gambar berhasil diedit!', 'success');
+      setResult(data as any);
+      onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Koneksi ke server gagal';
       setError(msg);
+      setErrorDetail({
+        title: 'Kesalahan Jaringan / Server',
+        statusCode: currentStatusCode || undefined,
+        errorMessage: msg,
+        endpoint: '/api/edits',
+        requestPayload: requestSummary,
+        rawResponseText: rawText || (err instanceof Error ? err.stack || err.message : String(err)),
+      });
       showToast(msg, 'error');
     } finally {
       setLoading(false);
@@ -1320,22 +1369,41 @@ export default function EditsTab({
                 </div>
               </div>
             ) : error ? (
-              <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-3 bg-rose-50 rounded-xl border border-rose-200 text-rose-800">
-                <AlertTriangle className="w-10 h-10 text-rose-600" />
-                <p className="text-sm font-semibold">Gagal Mengedit Gambar</p>
-                <p className="text-xs text-rose-700 max-w-sm">{error}</p>
-                {result?.historyId && (
-                  <button
-                    type="button"
-                    onClick={handleRedownload}
-                    disabled={isRedownloading}
-                    className="mt-2 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
-                    title="Ambil ulang file gambar dari respons API ke server lokal"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isRedownloading ? 'animate-spin text-white' : ''}`} />
-                    <span>{isRedownloading ? 'Mengambil...' : 'Ambil Gambar'}</span>
-                  </button>
-                )}
+              <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center p-6 space-y-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-rose-800 shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shadow-xs">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1 max-w-md">
+                  <p className="text-sm font-bold text-rose-900">Gagal Mengedit Gambar</p>
+                  <p className="text-xs text-rose-700 leading-relaxed break-words">{error}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  {errorDetail && (
+                    <button
+                      type="button"
+                      onClick={() => setShowErrorModal(true)}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs hover:shadow-md cursor-pointer"
+                      title="Lihat detail respons mentah dari server AI"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Lihat Detail Respons</span>
+                    </button>
+                  )}
+
+                  {result?.historyId && (
+                    <button
+                      type="button"
+                      onClick={handleRedownload}
+                      disabled={isRedownloading}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Ambil ulang file gambar dari respons API ke server lokal"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRedownloading ? 'animate-spin text-white' : ''}`} />
+                      <span>{isRedownloading ? 'Mengambil...' : 'Ambil Gambar'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ) : result?.resultImageUrl || (result?.resultImageUrls && result.resultImageUrls.length > 0) ? (
               <div className="flex-1 flex flex-col space-y-4">
@@ -1513,6 +1581,13 @@ export default function EditsTab({
           )}
         </div>
       </div>
+
+      {/* Modal Detail Respons Error */}
+      <ErrorDetailModal
+        isOpen={showErrorModal}
+        onClose={() => setShowErrorModal(false)}
+        data={errorDetail}
+      />
     </div>
   );
 }
