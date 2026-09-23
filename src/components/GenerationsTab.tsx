@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, X, ExternalLink, FileText } from 'lucide-react';
+import { Sparkles, Wand2, Loader2, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Maximize2, Settings, RotateCcw, Scissors, MoreVertical, FileText } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import { triggerDownload } from '@/lib/imageHelper';
 import ErrorDetailModal, { ErrorDetailData } from './ErrorDetailModal';
@@ -97,7 +97,6 @@ export default function GenerationsTab({
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isRedownloading, setIsRedownloading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Menutup menu aksi saat klik di luar menu
   useEffect(() => {
@@ -110,18 +109,10 @@ export default function GenerationsTab({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Menutup modal preview saat tombol Escape ditekan
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsPreviewOpen(false);
-      }
-    };
-    if (isPreviewOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewOpen]);
+  /** Buka gambar hasil di tab baru. */
+  const openImageInNewTab = (url?: string) => {
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const handleRedownload = async () => {
     if (!result?.historyId) return;
@@ -239,7 +230,6 @@ export default function GenerationsTab({
     setShowErrorModal(false);
     setResult(null);
     setIsMenuOpen(false);
-    setIsPreviewOpen(false);
 
     const forwardPayload = {
       model: model.trim(),
@@ -803,9 +793,9 @@ export default function GenerationsTab({
                   <div className="relative aspect-square w-full bg-slate-100 flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={() => setIsPreviewOpen(true)}
+                      onClick={() => openImageInNewTab(result.resultImageUrl)}
                       className="w-full h-full flex items-center justify-center p-2 group cursor-pointer relative"
-                      title="Klik untuk membuka pratinjau gambar"
+                      title="Klik untuk membuka gambar di tab baru"
                     >
                       <img
                         src={result.resultImageUrl}
@@ -848,7 +838,7 @@ export default function GenerationsTab({
                             type="button"
                             onClick={() => {
                               setIsMenuOpen(false);
-                              setIsPreviewOpen(true);
+                              openImageInNewTab(result.resultImageUrl);
                             }}
                             className="w-full px-3 py-2 text-left text-slate-700 hover:text-purple-700 hover:bg-purple-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
                           >
@@ -950,106 +940,6 @@ export default function GenerationsTab({
           )}
         </div>
       </div>
-
-      {/* Image Preview Modal */}
-      {isPreviewOpen && result?.resultImageUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 overflow-hidden animate-in fade-in duration-150"
-          onClick={() => setIsPreviewOpen(false)}
-        >
-          <div
-            className="relative max-w-5xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] bg-slate-900 border border-slate-800 rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col text-white"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-900/90 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-                <span className="text-xs sm:text-sm font-semibold text-slate-200 truncate">
-                  Pratinjau Hasil Gambar
-                </span>
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-mono border border-slate-700">
-                  {model}
-                </span>
-                {Boolean(size) && (
-                  <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[11px] font-mono border border-slate-700">
-                    {size}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                {onUseAsEditBase && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsPreviewOpen(false);
-                      onUseAsEditBase(result.resultImageUrl);
-                    }}
-                    className="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title="Edit Gambar"
-                  >
-                    <Scissors className="w-4 h-4" />
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (result.resultImageUrl) {
-                      triggerDownload(result.resultImageUrl, `ai_gen_${result?.historyId || 'result'}.png`);
-                    }
-                  }}
-                  className="p-2 text-slate-300 hover:text-purple-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                  title="Unduh Gambar"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-
-                <a
-                  href={result.resultImageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                  title="Buka di tab baru"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewOpen(false)}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer ml-1"
-                  title="Tutup (Esc)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Image Body */}
-            <div className="flex-1 min-h-0 p-2 sm:p-6 flex items-center justify-center overflow-hidden bg-slate-950/60">
-              <img
-                src={result.resultImageUrl}
-                alt="AI Generated Preview"
-                className="max-w-full max-h-full object-contain rounded-lg shadow-lg select-none"
-              />
-            </div>
-
-            {/* Modal Footer */}
-            {prompt && (
-              <div className="px-4 py-2.5 bg-slate-900/90 border-t border-slate-800 text-xs text-slate-300 flex items-center justify-between gap-3 shrink-0">
-                <p className="truncate text-[11px] text-slate-400 font-mono">
-                  <span className="text-purple-400 font-semibold">Prompt:</span> {prompt}
-                </p>
-                <span className="text-[10px] text-slate-500 whitespace-nowrap hidden sm:inline">
-                  Tekan ESC atau klik luar untuk menutup
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Modal Detail Respons Error */}
       <ErrorDetailModal
