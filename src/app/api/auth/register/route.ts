@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const ipKey = `register:ip:${clientIp}`;
 
     // Batasi registrasi maksimal 10 akun per 15 menit per IP untuk mencegah bot
-    const ipLimit = checkRateLimit(ipKey, 10, 15 * 60 * 1000, 15 * 60 * 1000);
+    const ipLimit = checkRateLimit(ipKey, 10, 15 * 60 * 1000);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {

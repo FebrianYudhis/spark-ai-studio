@@ -2,6 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
 
@@ -92,23 +94,64 @@ export function extractImageStrings(responseData: unknown): string[] {
   return results;
 }
 
-/**
- * Mengunduh buffer gambar dari URL remote dengan dukungan redirect dan toleransi SSL proxy
- */
-function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise<{ buffer: Buffer; contentType: string } | null> {
-  const url = (urlInput || '').trim();
-  return new Promise((resolve) => {
-    if (maxRedirects < 0) {
-      console.warn(`[storage] Too many redirects for: ${url}`);
-      return resolve(null);
-    }
+function isPrivateAddress(address: string): boolean {
+  if (net.isIPv4(address)) {
+    const [a, b] = address.split('.').map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    return false;
+  }
+  if (net.isIPv6(address)) {
+    const v = address.toLowerCase();
+    if (v === '::1' || v === '::') return true;
+    if (v.startsWith('fe80') || v.startsWith('fc') || v.startsWith('fd')) return true;
+    if (v.startsWith('::ffff:')) return isPrivateAddress(v.slice(7));
+    return false;
+  }
+  return true;
+}
 
+/**
+ * Menolak URL yang mengarah ke alamat privat/loopback (proteksi SSRF).
+ * ponytail: blokir berbasis resolusi DNS; batasnya DNS rebinding. Tambahkan
+ * pinning IP hasil resolusi ke koneksi bila perlu hardening lebih ketat.
+ */
+async function isSafeRemoteUrl(rawUrl: string): Promise<boolean> {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname;
+    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return false;
+    const addresses = await dns.lookup(host, { all: true });
+    if (addresses.length === 0) return false;
+    return addresses.every((entry) => !isPrivateAddress(entry.address));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mengunduh buffer gambar dari URL remote dengan dukungan redirect
+ */
+async function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const url = (urlInput || '').trim();
+  if (maxRedirects < 0) {
+    console.warn(`[storage] Too many redirects for: ${url}`);
+    return null;
+  }
+  if (!(await isSafeRemoteUrl(url))) {
+    console.warn(`[storage] Blocked unsafe image URL: ${url}`);
+    return null;
+  }
+  return new Promise((resolve) => {
     try {
       const client = url.startsWith('https:') ? https : http;
       const req = client.get(
         url,
         {
-          rejectUnauthorized: false,
           headers: {
             'User-Agent':
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',

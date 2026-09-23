@@ -184,9 +184,9 @@ export default function SettingsModal({
           .then((res) => res.json())
           .then((data) => {
             if (data) {
-              setBaseUrl(data.baseUrl || 'https://api.openai.com/v1');
-              setToken(data.rawToken || '');
-              setGenerationsModel(
+        setBaseUrl(data.baseUrl || 'https://api.openai.com/v1');
+        setToken('');
+        setGenerationsModel(
                 data.defaultGenerationsModel && isValidModel(data.defaultGenerationsModel)
                   ? data.defaultGenerationsModel
                   : DEFAULT_MODEL

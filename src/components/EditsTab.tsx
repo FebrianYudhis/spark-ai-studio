@@ -497,9 +497,7 @@ export default function EditsTab({
   const handleScale = (factor: number) => {
     const newSize = scaleImageDimensions(size, factor);
     setSize(newSize);
-    if (sizePreset === 'custom') {
-      setSizePreset(getPresetIdFromSize(newSize));
-    }
+    setSizePreset(getPresetIdFromSize(newSize) || 'custom');
   };
 
   const sizeValidation = validateImageSize(size);
@@ -669,13 +667,13 @@ export default function EditsTab({
         });
         showToast(msg, 'error');
         if (data.historyId || data.requestSummary) {
-          setResult(data as any);
+          setResult(data as typeof result);
         }
         return;
       }
 
       showToast('Gambar berhasil diedit!', 'success');
-      setResult(data as any);
+      setResult(data as typeof result);
       onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Koneksi ke server gagal';

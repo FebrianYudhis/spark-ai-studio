@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreVertical } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
-import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
+import { showToast, showError, showConfirm } from '@/lib/swal';
 import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
 import { copyToClipboard } from '@/lib/clipboard';
 import { triggerDownload } from '@/lib/imageHelper';

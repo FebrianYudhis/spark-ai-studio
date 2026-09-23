@@ -10,7 +10,6 @@ const MIME_TYPES: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
   '.avif': 'image/avif',
   '.bmp': 'image/bmp',
 };
@@ -63,6 +62,7 @@ export async function GET(
         'Content-Type': contentType,
         'Content-Length': stat.size.toString(),
         'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (error) {

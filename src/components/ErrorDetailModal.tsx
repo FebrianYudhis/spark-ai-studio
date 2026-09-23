@@ -9,7 +9,6 @@ import {
   Check,
   Globe,
   FileCode,
-  Layers,
   Database,
   Terminal,
 } from 'lucide-react';

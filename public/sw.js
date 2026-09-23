@@ -45,8 +45,8 @@ self.addEventListener('fetch', (event) => {
 
   // Network-first with cache fallback
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
-    })
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' }))
+    )
   );
 });

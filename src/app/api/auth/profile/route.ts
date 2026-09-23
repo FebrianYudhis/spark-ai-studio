@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
-import { getUserById, updateUserProfile } from '@/lib/db';
+import { getUserById, updateUserProfile, deleteUserSessions } from '@/lib/db';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const updates: { display_name?: string; password_hash?: string; salt?: string } = {};
-    let messages: string[] = [];
+    const messages: string[] = [];
 
     // 1. Validasi dan pembaruan nama tampilan
     if (displayName !== undefined) {
@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
       const ipKey = `profile:pwd:ip:${clientIp}`;
 
       // Periksa rate limit percobaan ubah password (maks 5 kali salah per 5 menit)
-      const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
-      const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+      const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000);
+      const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000);
       if (!userLimit.allowed || !ipLimit.allowed) {
         const retryAfter = Math.max(userLimit.retryAfterSeconds ?? 60, ipLimit.retryAfterSeconds ?? 60);
         return NextResponse.json(
@@ -116,6 +116,11 @@ export async function POST(req: NextRequest) {
         { error: 'Gagal memperbarui profil di database.' },
         { status: 500, headers: NO_CACHE_HEADERS }
       );
+    }
+
+    // Jika password berubah, invalidate semua sesi lain (force re-login)
+    if (updates.password_hash || updates.salt) {
+      deleteUserSessions(authUser.id);
     }
 
     return NextResponse.json(

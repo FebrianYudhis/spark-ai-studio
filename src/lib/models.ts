@@ -100,10 +100,10 @@ export function scaleImageDimensions(sizeStr: string, factor: number): string {
     scaleDown = Math.min(scaleDown, MAX_LONG_EDGE / maxDim);
   }
   if (minDim * scaleDown > MAX_SHORT_EDGE) {
-    scaleDown = Math.min(scaleDown, MAX_SHORT_EDGE / (minDim * scaleDown));
+    scaleDown = Math.min(scaleDown, MAX_SHORT_EDGE / minDim);
   }
   if ((targetW * scaleDown) * (targetH * scaleDown) > MAX_TOTAL_PIXELS) {
-    scaleDown = Math.min(scaleDown, Math.sqrt(MAX_TOTAL_PIXELS / ((targetW * scaleDown) * (targetH * scaleDown))));
+    scaleDown = Math.min(scaleDown, Math.sqrt(MAX_TOTAL_PIXELS / (targetW * targetH)));
   }
 
   targetW *= scaleDown;
@@ -119,18 +119,19 @@ export function scaleImageDimensions(sizeStr: string, factor: number): string {
     }
   }
 
-  // Bulatkan ke kelipatan 16 terdekat (minimal kelipatan 16 di atas atau sama dengan MIN_EDGE)
+  // Bulatkan ke kelipatan 16 terdekat lalu jaga batas secara proporsional
   let w = Math.round(targetW / 16) * 16;
   let h = Math.round(targetH / 16) * 16;
 
-  // Pastikan setelah pembulatan tidak ada sisi yang melanggar batas
-  if (Math.max(w, h) > MAX_LONG_EDGE) {
-    if (w >= h) w = MAX_LONG_EDGE;
-    else h = MAX_LONG_EDGE;
-  }
-  if (Math.min(w, h) > MAX_SHORT_EDGE) {
-    if (w <= h) w = MAX_SHORT_EDGE;
-    else h = MAX_SHORT_EDGE;
+  const overRatio = Math.max(
+    1,
+    Math.max(w, h) / MAX_LONG_EDGE,
+    Math.min(w, h) / MAX_SHORT_EDGE,
+    Math.sqrt((w * h) / MAX_TOTAL_PIXELS)
+  );
+  if (overRatio > 1) {
+    w = Math.round((w / overRatio) / 16) * 16;
+    h = Math.round((h / overRatio) / 16) * 16;
   }
 
   return `${w}x${h}`;

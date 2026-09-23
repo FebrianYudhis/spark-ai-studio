@@ -73,7 +73,7 @@ export async function getAuthUser(): Promise<Omit<UserRecord, 'password_hash' | 
         u.created_at
       FROM sessions s
       JOIN users u ON u.id = s.user_id
-      WHERE s.id = ? AND (s.expires_at > ? OR s.expires_at > datetime('now', 'localtime'))
+      WHERE s.id = ? AND datetime(s.expires_at) > datetime(?)
     `).get(sessionId, nowIso) as Omit<UserRecord, 'password_hash' | 'salt'> | undefined;
 
     return row ?? null;

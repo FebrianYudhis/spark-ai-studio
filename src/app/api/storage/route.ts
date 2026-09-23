@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
 import { applyRetentionPolicy } from '@/lib/retention';
-import { getStorageStats, cleanupOrphanedFiles, cleanupAllUploadFiles } from '@/lib/storage';
+import { getStorageStats, cleanupOrphanedFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -93,26 +93,6 @@ export async function POST(req: NextRequest) {
         formattedFreedSize: formatBytes(retentionRes.freedBytes),
         deletedFiles: retentionRes.deletedFiles,
         message: retentionRes.message,
-      });
-    }
-
-    if (action === 'clean_all') {
-      if (user.id !== 1) {
-        return NextResponse.json(
-          { error: 'Hanya administrator (user utama) yang memiliki izin mengosongkan seluruh penyimpanan.' },
-          { status: 403 }
-        );
-      }
-
-      const result = cleanupAllUploadFiles();
-
-      return NextResponse.json({
-        success: true,
-        action: 'clean_all',
-        deletedCount: result.deletedCount,
-        freedBytes: result.freedBytes,
-        formattedFreedSize: formatBytes(result.freedBytes),
-        message: `Berhasil mengosongkan seluruh file upload (${result.deletedCount} file, ${formatBytes(result.freedBytes)})`,
       });
     }
 

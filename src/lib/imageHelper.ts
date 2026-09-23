@@ -5,7 +5,7 @@
  * - Trigger unduhan gambar yang kompatibel dengan cross-origin CDN
  */
 
-const SUPPORTED_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|heic|heif|svg|avif)$/i;
+const SUPPORTED_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|heic|heif|avif)$/i;
 
 /**
  * Memvalidasi apakah file merupakan gambar yang didukung
@@ -13,6 +13,8 @@ const SUPPORTED_EXTENSIONS = /\.(png|jpe?g|webp|gif|bmp|heic|heif|svg|avif)$/i;
  */
 export function isSupportedImageFile(file: File): boolean {
   if (!file) return false;
+  // SVG ditolak: dapat memuat skrip dan tidak didukung API edit gambar
+  if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) return false;
   if (file.type && file.type.startsWith('image/')) return true;
   return SUPPORTED_EXTENSIONS.test(file.name);
 }

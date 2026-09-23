@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const ipKey = `login:ip:${clientIp}`;
 
     // 1. Cek rate limit berdasarkan IP (maksimal 5 percobaan gagal per 5 menit)
-    const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+    const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         {
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     const userKey = `login:user:${username}`;
     // 2. Cek rate limit spesifik per target akun username
-    const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000, 5 * 60 * 1000);
+    const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000);
     if (!userLimit.allowed) {
       return NextResponse.json(
         {

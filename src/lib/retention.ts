@@ -45,7 +45,7 @@ export function applyRetentionPolicy(userId: number): RetentionResult {
   if (retention_days > 0) {
     const daysStmt = db.prepare(`
       SELECT id FROM api_hits 
-      WHERE user_id = ? AND created_at < datetime('now', '-' || ? || ' days')
+      WHERE user_id = ? AND datetime(created_at) < datetime('now', '-' || ? || ' days')
     `);
     const oldRows = daysStmt.all(userId, retention_days) as Array<{ id: number }>;
     for (const row of oldRows) {

@@ -32,13 +32,11 @@ export interface RateLimitStatus {
  * @param key Identifier (misal 'ip:192.168.1.5' atau 'user:admin')
  * @param maxAttempts Maksimal percobaan gagal sebelum diblokir (default: 5)
  * @param windowMs Jendela waktu percobaan dalam milidetik (default: 5 menit)
- * @param blockDurationMs Lama durasi pemblokiran jika mencapai batas (default: 5 menit)
  */
 export function checkRateLimit(
   key: string,
   maxAttempts: number = 5,
-  windowMs: number = 5 * 60 * 1000,
-  blockDurationMs: number = 5 * 60 * 1000
+  windowMs: number = 5 * 60 * 1000
 ): RateLimitStatus {
   const now = Date.now();
   const record = attemptsStore.get(key);
@@ -121,19 +119,24 @@ export function resetRateLimit(key: string): void {
 }
 
 /**
- * Helper untuk mengambil IP client dari HTTP request
+ * Helper untuk mengambil IP client dari HTTP request.
+ * Header proxy (X-Forwarded-For dll) hanya dipercaya jika TRUST_PROXY=true,
+ * karena header tersebut bisa dipalsukan klien untuk melewati rate limit.
  */
 export function getClientIp(req: Request): string {
-  try {
-    const xForwardedFor = req.headers.get('x-forwarded-for');
-    if (xForwardedFor) {
-      const first = xForwardedFor.split(',')[0].trim();
-      if (first) return first;
-    }
-    const xRealIp = req.headers.get('x-real-ip');
-    if (xRealIp) return xRealIp.trim();
-    const cfConnectingIp = req.headers.get('cf-connecting-ip');
-    if (cfConnectingIp) return cfConnectingIp.trim();
-  } catch {}
+  const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1';
+  if (trustProxy) {
+    try {
+      const xForwardedFor = req.headers.get('x-forwarded-for');
+      if (xForwardedFor) {
+        const first = xForwardedFor.split(',')[0].trim();
+        if (first) return first;
+      }
+      const xRealIp = req.headers.get('x-real-ip');
+      if (xRealIp) return xRealIp.trim();
+      const cfConnectingIp = req.headers.get('cf-connecting-ip');
+      if (cfConnectingIp) return cfConnectingIp.trim();
+    } catch {}
+  }
   return '127.0.0.1';
 }

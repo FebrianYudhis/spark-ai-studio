@@ -81,9 +81,8 @@ export async function GET(req: NextRequest) {
       // Image Studio Settings
       baseUrl: settings.base_url,
       isConfigured,
-      maskedToken,
-      rawToken: token,
-      defaultGenerationsModel: settings.generations_model,
+       maskedToken,
+       defaultGenerationsModel: settings.generations_model,
       defaultEditsModel: settings.edits_model,
 
       // Prompt Enhancer Settings
@@ -171,7 +170,6 @@ export async function POST(req: NextRequest) {
           baseUrl: updated.base_url,
           isConfigured,
           maskedToken,
-          rawToken: updated.api_token,
           defaultGenerationsModel: updated.generations_model,
           defaultEditsModel: updated.edits_model,
 

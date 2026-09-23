@@ -207,7 +207,7 @@ function initSchema(db: DatabaseSync) {
     const nowIso = new Date().toISOString();
     db.prepare(`
       DELETE FROM sessions 
-      WHERE expires_at <= ? OR expires_at <= datetime('now', 'localtime')
+      WHERE datetime(expires_at) <= datetime(?)
     `).run(nowIso);
   } catch {}
 
@@ -729,7 +729,7 @@ export function cleanExpiredSessions(): number {
     const nowIso = new Date().toISOString();
     const result = db.prepare(`
       DELETE FROM sessions 
-      WHERE expires_at <= ? OR expires_at <= datetime('now', 'localtime')
+      WHERE datetime(expires_at) <= datetime(?)
     `).run(nowIso);
     return Number(result.changes);
   } catch (err) {
