@@ -119,7 +119,15 @@ function initSchema(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS idx_api_hits_type ON api_hits(type);
     CREATE INDEX IF NOT EXISTS idx_api_hits_user ON api_hits(user_id);
-    CREATE INDEX IF NOT EXISTS idx_api_hits_created_at ON api_hits(created_at DESC);
+     CREATE INDEX IF NOT EXISTS idx_api_hits_created_at ON api_hits(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS rate_limit_attempts (
+      key TEXT PRIMARY KEY,
+      attempts INTEGER NOT NULL DEFAULT 1,
+      first_attempt_at INTEGER NOT NULL,
+      blocked_until INTEGER NOT NULL DEFAULT 0
+    );
+
 
     CREATE TABLE IF NOT EXISTS app_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
