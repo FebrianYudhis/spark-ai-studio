@@ -3,7 +3,7 @@ import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
-import { validateImageSize, validateImageQuality, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
+import { validateImageSize, validateImageQuality, isValidModel, validateOutputFormat, AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import { isTokenConfigured, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
@@ -63,7 +63,25 @@ export async function POST(req: NextRequest) {
   const model = body.model?.trim() || defaultModel;
   const size = body.size?.trim() || 'auto';
   const quality = (body.quality as string)?.trim() || 'auto';
-  const outputFormat = (body.output_format as string)?.trim() || 'png';
+  const rawOutputFormat = (body.output_format as string)?.trim() || 'png';
+
+  // Validasi model terhadap daftar model yang didukung
+  if (!isValidModel(model)) {
+    return NextResponse.json(
+      { error: `Model "${model}" tidak dikenali. Pilihan yang tersedia: ${AVAILABLE_MODELS.join(', ')}.` },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
+  }
+
+  // Validasi format output (hanya png)
+  const outputFormatValidation = validateOutputFormat(rawOutputFormat);
+  if (!outputFormatValidation.valid) {
+    return NextResponse.json(
+      { error: outputFormatValidation.error || 'Format output tidak valid' },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
+  }
+  const outputFormat = outputFormatValidation.value;
 
   // Validasi ukuran gambar sesuai spesifikasi OpenAI Images
   const sizeValidation = validateImageSize(size);
@@ -171,7 +189,7 @@ export async function POST(req: NextRequest) {
       requestPayload,
       resultImageUrl,
       response: sanitizedResponsePayload,
-      errorMessage,
+      error: errorMessage,
     }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
@@ -199,7 +217,7 @@ export async function POST(req: NextRequest) {
       statusCode: 500,
       targetUrl,
       requestPayload,
-      errorMessage: message,
+      error: message,
     }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

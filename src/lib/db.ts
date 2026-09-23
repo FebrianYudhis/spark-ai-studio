@@ -85,13 +85,13 @@ function initSchema(db: DatabaseSync) {
 
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+      base_url TEXT NOT NULL DEFAULT '${DEFAULT_BASE_URL}',
       api_token TEXT NOT NULL DEFAULT '',
-      generations_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
-      edits_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
-      enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
+      generations_model TEXT NOT NULL DEFAULT '${DEFAULT_MODEL}',
+      edits_model TEXT NOT NULL DEFAULT '${DEFAULT_MODEL}',
+      enhancer_base_url TEXT NOT NULL DEFAULT '${DEFAULT_BASE_URL}',
       enhancer_api_token TEXT NOT NULL DEFAULT '',
-      enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+      enhancer_model TEXT NOT NULL DEFAULT '${DEFAULT_ENHANCER_MODEL}',
       enhancer_prompt TEXT NOT NULL DEFAULT '',
       retention_days INTEGER NOT NULL DEFAULT 0,
       retention_max_items INTEGER NOT NULL DEFAULT 0,

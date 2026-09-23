@@ -127,8 +127,24 @@ export function scaleImageDimensions(sizeStr: string, factor: number): string {
   return `${w}x${h}`;
 }
 
-export function validateImageSize(sizeStr: string): SizeValidationResult {
-  const trimmed = sizeStr.trim().toLowerCase();
+export const OUTPUT_FORMATS = ['png'] as const;
+export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
+
+export function validateOutputFormat(outputFormatStr?: string | null): {
+  valid: boolean;
+  value: OutputFormat;
+  error?: string;
+} {
+  const value = (outputFormatStr || 'png').trim().toLowerCase();
+  if (value === 'png') return { valid: true, value: 'png' };
+  return {
+    valid: false,
+    value: 'png',
+    error: `Format output "${outputFormatStr}" tidak didukung. Hanya "png" yang tersedia.`,
+  };
+}
+
+export function validateImageSize(sizeStr: string): SizeValidationResult {  const trimmed = sizeStr.trim().toLowerCase();
 
   if (trimmed === 'auto') {
     return { valid: true, isAuto: true, isExperimental: false };

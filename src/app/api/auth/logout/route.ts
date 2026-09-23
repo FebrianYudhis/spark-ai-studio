@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { deleteSession } from '@/lib/db';
 import { SESSION_COOKIE_NAME } from '@/lib/auth';
-import { toClientErrorMessage } from '@/lib/utils';
+import { NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export async function POST() {
   try {
@@ -14,12 +14,12 @@ export async function POST() {
 
     cookieStore.delete(SESSION_COOKIE_NAME);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     console.error('[auth/logout] error:', err);
     return NextResponse.json(
       { error: toClientErrorMessage(err, 'Gagal memproses logout') },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

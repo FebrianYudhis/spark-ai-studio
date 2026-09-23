@@ -7,9 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Studio AI Image Generations dan Edits dengan SQLite History & Local Image Persistence',
     start_url: '/',
     display: 'standalone',
-    background_color: '#0f172a',
+    background_color: '#f8fafc',
     theme_color: '#4f46e5',
-    orientation: 'portrait-primary',
+    orientation: 'any',
     icons: [
       {
         src: '/icons/icon-192.png',

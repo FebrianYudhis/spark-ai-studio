@@ -16,7 +16,6 @@ interface AppConfig {
   baseUrl: string;
   isConfigured: boolean;
   maskedToken: string;
-  rawToken?: string;
   defaultGenerationsModel: string;
   defaultEditsModel: string;
   enhancerBaseUrl?: string;

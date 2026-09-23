@@ -57,10 +57,14 @@ export async function GET(req: NextRequest) {
     }
 
     const type = searchParams.get('type') || 'all';
-    const page = Math.max(Number(searchParams.get('page')) || 1, 1);
     const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 3, 1), 100);
     const search = searchParams.get('search')?.trim() || '';
-    const offset = searchParams.has('page') ? (page - 1) * limit : Number(searchParams.get('offset')) || 0;
+    const requestedPage = Math.max(Number(searchParams.get('page')) || 1, 1);
+    const offset = searchParams.has('page')
+      ? (requestedPage - 1) * limit
+      : Math.max(Number(searchParams.get('offset')) || 0, 0);
+    // page selalu diturunkan dari offset agar konsisten meski dipanggil lewat ?offset=
+    const page = Math.floor(offset / limit) + 1;
 
     const items = getApiHits({ userId: user.id, type, limit, offset, search });
     const summaryCounts = getHistorySummaryCounts(user.id);

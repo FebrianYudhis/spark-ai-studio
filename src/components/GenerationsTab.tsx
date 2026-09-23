@@ -288,7 +288,7 @@ export default function GenerationsTab({
       }
 
       if (!res.ok || !data.success) {
-        const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses request`;
+        const msg = (data.error as string) || `HTTP ${res.status}: Gagal memproses request`;
         setError(msg);
         setErrorDetail({
           title: 'Gagal Menghasilkan Gambar',

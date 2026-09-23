@@ -61,9 +61,18 @@ export function formatSafeDate(dateStr?: string | null, timeZone: string = APP_T
   }
 }
 
-/** Memeriksa apakah token API benar-benar sudah diisi (bukan placeholder/dummy). */
+const PLACEHOLDER_TOKENS = new Set([
+  'your_api_token_here',
+  'your_token_here',
+  'your-enhancer-api-token',
+  'changeme',
+  'dummy',
+]);
+
+/** Memeriksa apakah token API benar-benar sudah diisi (bukan placeholder persis). */
 export function isTokenConfigured(token?: string | null): boolean {
-  return Boolean(token && token !== 'your_api_token_here' && !token.includes('dummy'));
+  if (!token) return false;
+  return !PLACEHOLDER_TOKENS.has(token.trim().toLowerCase());
 }
 
 /** Menyamarkan token API untuk ditampilkan kembali ke UI. */

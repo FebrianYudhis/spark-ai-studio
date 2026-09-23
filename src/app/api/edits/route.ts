@@ -3,7 +3,7 @@ import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
-import { validateImageSize, validateImageQuality, validateInputFidelity, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
+import { validateImageSize, validateImageQuality, validateInputFidelity, isValidModel, validateOutputFormat, AVAILABLE_MODELS, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import { isTokenConfigured, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 import path from 'node:path';
@@ -54,6 +54,23 @@ export async function POST(req: NextRequest) {
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400, headers: NO_CACHE_HEADERS });
+  }
+
+  // Validasi model terhadap daftar model yang didukung
+  if (!isValidModel(model)) {
+    return NextResponse.json(
+      { error: `Model "${model}" tidak dikenali. Pilihan yang tersedia: ${AVAILABLE_MODELS.join(', ')}.` },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
+  }
+
+  // Validasi format output (hanya png)
+  const outputFormatValidation = validateOutputFormat(outputFormat);
+  if (!outputFormatValidation.valid) {
+    return NextResponse.json(
+      { error: outputFormatValidation.error || 'Format output tidak valid' },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
   }
 
   // Validasi ukuran gambar sesuai spesifikasi OpenAI Images
@@ -266,7 +283,7 @@ export async function POST(req: NextRequest) {
       resultImageUrl: primaryResultImageUrl,
       resultImageUrls: savedResultUrls,
       response: sanitizedResponseData,
-      errorMessage,
+      error: errorMessage,
     }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
@@ -299,7 +316,7 @@ export async function POST(req: NextRequest) {
       requestSummary,
       sourceImageUrls: allSavedSources.map((s) => s.url),
       sourceImageUrl: savedPrimary.url,
-      errorMessage: message,
+      error: message,
     }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

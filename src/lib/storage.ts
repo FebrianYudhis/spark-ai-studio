@@ -435,62 +435,6 @@ export function deletePhysicalFile(urlOrFilename: string): boolean {
 }
 
 /**
- * Menghitung statistik penggunaan disk pada folder /public/uploads/
- */
-export function getStorageStats(activeUrls: string[]): StorageStats {
-  try {
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      return { totalFiles: 0, totalSizeBytes: 0, activeFiles: 0, activeSizeBytes: 0, orphanedFiles: 0, orphanedSizeBytes: 0 };
-    }
-
-    const activeBasenames = new Set(
-      activeUrls.map((u) => path.basename(u)).filter(Boolean)
-    );
-
-    const files = fs.readdirSync(UPLOAD_DIR);
-    let totalFiles = 0;
-    let totalSizeBytes = 0;
-    let activeFiles = 0;
-    let activeSizeBytes = 0;
-    let orphanedFiles = 0;
-    let orphanedSizeBytes = 0;
-
-    for (const file of files) {
-      if (file.startsWith('.')) continue;
-
-      const filePath = path.join(UPLOAD_DIR, file);
-      try {
-        const stat = fs.statSync(filePath);
-        if (stat.isFile()) {
-          totalFiles++;
-          totalSizeBytes += stat.size;
-
-          if (activeBasenames.has(file)) {
-            activeFiles++;
-            activeSizeBytes += stat.size;
-          } else {
-            orphanedFiles++;
-            orphanedSizeBytes += stat.size;
-          }
-        }
-      } catch {}
-    }
-
-    return {
-      totalFiles,
-      totalSizeBytes,
-      activeFiles,
-      activeSizeBytes,
-      orphanedFiles,
-      orphanedSizeBytes,
-    };
-  } catch (err) {
-    console.error('[storage] Error getting storage stats:', err);
-    return { totalFiles: 0, totalSizeBytes: 0, activeFiles: 0, activeSizeBytes: 0, orphanedFiles: 0, orphanedSizeBytes: 0 };
-  }
-}
-
-/**
  * Statistik penyimpanan untuk satu pengguna: total/aktif dihitung dari file yang
  * dirujuk riwayat milik user tersebut, sedangkan "orphaned" hanya menghitung file
  * yang tidak dirujuk oleh riwayat user mana pun (sampah disk, bukan milik user lain).

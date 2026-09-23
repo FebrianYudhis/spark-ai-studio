@@ -37,7 +37,6 @@ export interface AppConfigData {
   baseUrl: string;
   isConfigured: boolean;
   maskedToken: string;
-  rawToken?: string;
   defaultGenerationsModel: string;
   defaultEditsModel: string;
   enhancerBaseUrl?: string;
@@ -224,7 +223,7 @@ export default function SettingsModal({
     if (isOpen) {
       if (currentConfig) {
         setBaseUrl(currentConfig.baseUrl || DEFAULT_BASE_URL);
-        setToken(currentConfig.rawToken || '');
+        setToken('');
         setGenerationsModel(
           currentConfig.defaultGenerationsModel && isValidModel(currentConfig.defaultGenerationsModel)
             ? currentConfig.defaultGenerationsModel

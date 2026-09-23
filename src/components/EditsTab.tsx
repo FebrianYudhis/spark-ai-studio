@@ -604,7 +604,6 @@ export default function EditsTab({
 
       // 1. Image 1 (Gambar Dasar) dikirimkan terpisah
       formData.append('image1', primaryImage.file, primaryImage.file.name);
-      formData.append('primaryImage', primaryImage.file, primaryImage.file.name);
 
       // 2. Additional Images dikirimkan secara berurutan untuk image 2, image 3, dst.
       additionalImages.forEach((item) => {
@@ -648,7 +647,7 @@ export default function EditsTab({
       }
 
       if (!res.ok || !data.success) {
-        const msg = (data.errorMessage as string) || (data.error as string) || `HTTP ${res.status}: Gagal memproses edit gambar`;
+        const msg = (data.error as string) || `HTTP ${res.status}: Gagal memproses edit gambar`;
         setError(msg);
         setErrorDetail({
           title: 'Gagal Mengedit Gambar',
