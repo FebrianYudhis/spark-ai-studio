@@ -445,7 +445,7 @@ export default function GenerationsTab({
                     ) : (
                       <>
                         <Wand2 className="w-3.5 h-3.5 text-purple-600" />
-                        <span>Enhance Prompt</span>
+                        <span>Sempurnakan Instruksi</span>
                       </>
                     )}
                   </button>

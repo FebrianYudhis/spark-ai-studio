@@ -954,7 +954,7 @@ export default function SettingsModal({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Token khusus untuk fitur Prompt Enhancer (wajib diisi agar tombol <span className="font-semibold text-purple-700">Enhance Prompt</span> berfungsi).
+                  Token khusus untuk fitur Prompt Enhancer (wajib diisi agar tombol <span className="font-semibold text-purple-700">Sempurnakan Instruksi</span> berfungsi).
                 </p>
               </div>
 
