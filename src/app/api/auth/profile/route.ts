@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { getUserById, updateUserProfile, deleteUserSessions } from '@/lib/db';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
-import { NO_CACHE_HEADERS } from '@/lib/utils';
+import { NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     console.error('[auth/profile] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Terjadi kesalahan sistem.' },
+      { error: toClientErrorMessage(err, 'Terjadi kesalahan sistem') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

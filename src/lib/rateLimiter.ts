@@ -1,3 +1,5 @@
+import { isTrustProxyEnabled } from './utils';
+
 interface RateLimitRecord {
   attempts: number;
   firstAttemptAt: number;
@@ -132,20 +134,19 @@ export function resetRateLimit(key: string | null): void {
 /**
  * Helper untuk mengambil IP client dari HTTP request.
  *
- * - Jika TRUST_PROXY aktif, header proxy (X-Forwarded-For dll) dipercaya penuh
- *   karena server berada di belakang reverse-proxy tepercaya.
- * - Jika TRUST_PROXY nonaktif, nilai X-Forwarded-For yang di-inject otomatis oleh
- *   Next.js dari alamat socket koneksi dipakai sebagai best-effort. Nilai ini
- *   TIDAK dapat dipalsukan selama klien tidak mengirim header tersebut sendiri.
- * - Mengembalikan null bila IP tidak dapat ditentukan, sehingga pemanggil dapat
- *   melewati rate limit berbasis IP alih-alih memakai satu keranjang global.
- *
- * ponytail: best-effort, bukan anti-spoof kuat. Batasnya: klien yang mengirim
- * header X-Forwarded-For sendiri dapat memutar nilai. Upgrade: jalankan di
- * belakang reverse-proxy yang menimpa X-Forwarded-For lalu set TRUST_PROXY=true.
+ * - Hanya bila TRUST_PROXY aktif, header proxy (X-Forwarded-For / X-Real-IP /
+ *   CF-Connecting-IP) dipercaya. Aktifkan ini HANYA saat server berada di
+ *   belakang reverse-proxy yang menimpa header tersebut.
+ * - Bila TRUST_PROXY nonaktif, IP tidak dapat ditentukan dengan aman: klien bisa
+ *   menyuntik X-Forwarded-For sendiri (Next.js hanya mengisi header ini bila belum
+ *   ada), sehingga mengembalikan null agar rate limit per-IP dilewati alih-alih
+ *   memakai nilai yang dapat dipalsukan. Rate limit per-akun (username/user id)
+ *   tetap berjalan dan tidak terpengaruh.
  */
 export function getClientIp(req: Request): string | null {
-  const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1';
+  if (!isTrustProxyEnabled()) {
+    return null;
+  }
 
   const readHeader = (name: string, firstOnly: boolean): string | null => {
     const raw = req.headers.get(name);
@@ -154,17 +155,9 @@ export function getClientIp(req: Request): string | null {
     return value || null;
   };
 
-  if (trustProxy) {
-    return (
-      readHeader('x-forwarded-for', true) ||
-      readHeader('x-real-ip', false) ||
-      readHeader('cf-connecting-ip', false)
-    );
-  }
-
-  // Nilai tunggal hasil injeksi Next.js (tanpa koma = bukan rantai proxy yang dikirim klien)
-  const injected = readHeader('x-forwarded-for', false);
-  if (injected && !injected.includes(',')) return injected;
-
-  return null;
+  return (
+    readHeader('x-forwarded-for', true) ||
+    readHeader('x-real-ip', false) ||
+    readHeader('cf-connecting-ip', false)
+  );
 }

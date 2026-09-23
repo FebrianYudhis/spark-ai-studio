@@ -4,7 +4,7 @@ import { getUserByUsername, createSession } from '@/lib/db';
 import { applyRetentionPolicy } from '@/lib/retention';
 import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
-import { NO_CACHE_HEADERS } from '@/lib/utils';
+import { NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export async function POST(req: Request) {
   try {
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     console.error('[auth/login] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Gagal memproses login.' },
+      { error: toClientErrorMessage(err, 'Gagal memproses login') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

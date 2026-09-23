@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import { cookies } from 'next/headers';
 import { getDb, UserRecord } from './db';
+import { isTrustProxyEnabled } from './utils';
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -38,14 +39,17 @@ export function generateSessionId(): string {
 }
 
 /**
- * Memeriksa apakah request berasal dari protokol aman (HTTPS),
- * baik secara langsung maupun melalui reverse-proxy (x-forwarded-proto).
+ * Memeriksa apakah request berasal dari protokol aman (HTTPS).
+ * Header x-forwarded-proto hanya dipercaya bila TRUST_PROXY aktif (di belakang
+ * reverse-proxy tepercaya); selain itu fallback ke protokol URL request.
  */
 export function isRequestSecure(req: Request): boolean {
   try {
-    const proto = req.headers.get('x-forwarded-proto');
-    if (proto) {
-      return proto.split(',')[0].trim().toLowerCase() === 'https';
+    if (isTrustProxyEnabled()) {
+      const proto = req.headers.get('x-forwarded-proto');
+      if (proto) {
+        return proto.split(',')[0].trim().toLowerCase() === 'https';
+      }
     }
     const url = new URL(req.url);
     return url.protocol === 'https:';

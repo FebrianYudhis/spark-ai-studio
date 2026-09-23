@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { createUser, getUserByUsername, createSession } from '@/lib/db';
 import { hashPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt } from '@/lib/rateLimiter';
-import { NO_CACHE_HEADERS } from '@/lib/utils';
+import { NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export async function POST(req: Request) {
   try {
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     console.error('[auth/register] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Gagal mendaftar akun baru.' },
+      { error: toClientErrorMessage(err, 'Gagal mendaftar akun baru') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

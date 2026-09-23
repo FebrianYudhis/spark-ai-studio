@@ -5,7 +5,7 @@ import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
 import { validateImageSize, validateImageQuality, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
-import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
+import { isTokenConfigured, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,10 +175,11 @@ export async function POST(req: NextRequest) {
     }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
-    let message = err instanceof Error ? err.message : String(err);
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      message = 'Koneksi ke gateway AI terputus atau dibatalkan sebelum proses selesai merespons.';
-    }
+    console.error('[generations] error:', err);
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    const message = isTimeout
+      ? 'Koneksi ke gateway AI terputus atau dibatalkan sebelum proses selesai merespons.'
+      : toClientErrorMessage(err, 'Gagal memproses generasi gambar');
     const historyId = saveApiHit({
       user_id: user.id,
       type: 'generation',

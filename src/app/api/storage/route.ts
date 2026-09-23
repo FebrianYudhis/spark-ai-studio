@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
+import { getAllActiveImageUrls, getActiveImageUrlsForUser, cleanExpiredSessions, cleanStoredPayloads } from '@/lib/db';
 import { applyRetentionPolicy } from '@/lib/retention';
-import { getStorageStats, cleanupOrphanedFiles } from '@/lib/storage';
+import { getUserStorageStats, cleanupOrphanedFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
-import { formatBytes, NO_CACHE_HEADERS } from '@/lib/utils';
+import { formatBytes, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +14,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
-    const activeUrls = getAllActiveImageUrls();
-    const stats = getStorageStats(activeUrls);
+    const userActiveUrls = getActiveImageUrlsForUser(user.id);
+    const allActiveUrls = getAllActiveImageUrls();
+    const stats = getUserStorageStats(userActiveUrls, allActiveUrls);
 
     return NextResponse.json({
       success: true,
@@ -28,7 +29,7 @@ export async function GET() {
     }, { headers: NO_CACHE_HEADERS });
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: 'Gagal mengambil statistik penyimpanan: ' + (error instanceof Error ? error.message : String(error)) },
+      { error: toClientErrorMessage(error, 'Gagal mengambil statistik penyimpanan') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Aksi tidak dikenal: ${action}` }, { status: 400, headers: NO_CACHE_HEADERS });
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: 'Gagal membersihkan penyimpanan: ' + (error instanceof Error ? error.message : String(error)) },
+      { error: toClientErrorMessage(error, 'Gagal membersihkan penyimpanan') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

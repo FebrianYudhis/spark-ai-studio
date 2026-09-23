@@ -100,18 +100,30 @@ export default function Home() {
   const checkAuthSession = useCallback(async () => {
     try {
       const res = await fetch(`/api/auth/me?t=${Date.now()}`, { cache: 'no-store' });
+
+      // Sesi benar-benar tidak valid: baru paksa logout.
+      if (res.status === 401) {
+        setCurrentUser(null);
+        return null;
+      }
+
       if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
+        const data = await res.json().catch(() => null);
+        if (data?.user) {
           setCurrentUser(data.user);
           return data.user;
         }
+        setCurrentUser(null);
+        return null;
       }
-      setCurrentUser(null);
+
+      // Status server lain (mis. 500/503): pertahankan status login saat ini.
       return null;
     } catch (err) {
+      // Kegagalan jaringan: jangan langsung logout; hanya tampilkan halaman login
+      // bila status awal belum diketahui, selain itu pertahankan sesi di UI.
       console.error('Failed to check auth status:', err);
-      setCurrentUser(null);
+      setCurrentUser((prev) => (prev === undefined ? null : prev));
       return null;
     }
   }, []);

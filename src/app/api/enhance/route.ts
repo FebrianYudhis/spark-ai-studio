@@ -3,7 +3,7 @@ import { getUserSettings } from '@/lib/db';
 import { DEFAULT_ENHANCER_PROMPT, DEFAULT_BASE_URL, DEFAULT_ENHANCER_MODEL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
-import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
+import { isTokenConfigured, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,14 +123,12 @@ export async function POST(req: NextRequest) {
     }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     console.error('[enhance] Exception:', err);
-    let message = err instanceof Error ? err.message : String(err);
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      message = 'Koneksi ke server AI Enhancer timeout setelah 45 detik. Pastikan server merespons dengan cepat.';
-    }
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    const message = isTimeout
+      ? 'Koneksi ke server AI Enhancer timeout setelah 45 detik. Pastikan server merespons dengan cepat.'
+      : toClientErrorMessage(err, 'Terjadi kesalahan saat memproses enhance prompt');
     return NextResponse.json(
-      {
-        error: 'Terjadi kesalahan saat memproses enhance prompt: ' + message,
-      },
+      { error: message },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

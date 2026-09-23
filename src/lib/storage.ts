@@ -134,6 +134,12 @@ async function isSafeRemoteUrl(rawUrl: string): Promise<boolean> {
 }
 
 /**
+ * Batas maksimum ukuran unduhan gambar remote (25 MB) untuk mencegah
+ * URL bermasalah/berbahaya menghabiskan memori server.
+ */
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/**
  * Mengunduh buffer gambar dari URL remote dengan dukungan redirect
  */
 async function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise<{ buffer: Buffer; contentType: string } | null> {
@@ -163,17 +169,42 @@ async function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise
           // Ikuti redirect 301, 302, 307, 308
           if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             const redirectUrl = new URL(res.headers.location, url).toString();
+            res.resume();
             return resolve(downloadRemoteBuffer(redirectUrl, maxRedirects - 1));
           }
 
           if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
             console.warn(`[storage] Failed downloading image HTTP ${res.statusCode}: ${url}`);
+            res.resume();
+            return resolve(null);
+          }
+
+          const declaredLength = Number(res.headers['content-length'] || 0);
+          if (declaredLength > MAX_IMAGE_BYTES) {
+            console.warn(`[storage] Image too large (${declaredLength} bytes > ${MAX_IMAGE_BYTES}): ${url}`);
+            req.destroy();
             return resolve(null);
           }
 
           const chunks: Buffer[] = [];
-          res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          let received = 0;
+          let aborted = false;
+          res.on('data', (chunk) => {
+            if (aborted) return;
+            const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            received += buf.length;
+            if (received > MAX_IMAGE_BYTES) {
+              aborted = true;
+              console.warn(`[storage] Image exceeded ${MAX_IMAGE_BYTES} bytes while streaming, aborted: ${url}`);
+              res.destroy();
+              req.destroy();
+              resolve(null);
+              return;
+            }
+            chunks.push(buf);
+          });
           res.on('end', () => {
+            if (aborted) return;
             const buffer = Buffer.concat(chunks);
             if (buffer.length === 0) {
               console.warn(`[storage] Downloaded empty 0 bytes for: ${url}`);
@@ -183,6 +214,7 @@ async function downloadRemoteBuffer(urlInput: string, maxRedirects = 3): Promise
             resolve({ buffer, contentType });
           });
           res.on('error', (err) => {
+            if (aborted) return;
             console.error('[storage] Stream error downloading image:', err);
             resolve(null);
           });
@@ -455,6 +487,55 @@ export function getStorageStats(activeUrls: string[]): StorageStats {
   } catch (err) {
     console.error('[storage] Error getting storage stats:', err);
     return { totalFiles: 0, totalSizeBytes: 0, activeFiles: 0, activeSizeBytes: 0, orphanedFiles: 0, orphanedSizeBytes: 0 };
+  }
+}
+
+/**
+ * Statistik penyimpanan untuk satu pengguna: total/aktif dihitung dari file yang
+ * dirujuk riwayat milik user tersebut, sedangkan "orphaned" hanya menghitung file
+ * yang tidak dirujuk oleh riwayat user mana pun (sampah disk, bukan milik user lain).
+ */
+export function getUserStorageStats(userActiveUrls: string[], allActiveUrls: string[]): StorageStats {
+  const empty: StorageStats = { totalFiles: 0, totalSizeBytes: 0, activeFiles: 0, activeSizeBytes: 0, orphanedFiles: 0, orphanedSizeBytes: 0 };
+  try {
+    if (!fs.existsSync(UPLOAD_DIR)) return empty;
+
+    const userBasenames = new Set(userActiveUrls.map((u) => path.basename(u)).filter(Boolean));
+    const allBasenames = new Set(allActiveUrls.map((u) => path.basename(u)).filter(Boolean));
+
+    let totalFiles = 0;
+    let totalSizeBytes = 0;
+    let orphanedFiles = 0;
+    let orphanedSizeBytes = 0;
+
+    for (const file of fs.readdirSync(UPLOAD_DIR)) {
+      if (file.startsWith('.')) continue;
+      const filePath = path.join(UPLOAD_DIR, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) continue;
+
+        if (userBasenames.has(file)) {
+          totalFiles++;
+          totalSizeBytes += stat.size;
+        } else if (!allBasenames.has(file)) {
+          orphanedFiles++;
+          orphanedSizeBytes += stat.size;
+        }
+      } catch {}
+    }
+
+    return {
+      totalFiles,
+      totalSizeBytes,
+      activeFiles: totalFiles,
+      activeSizeBytes: totalSizeBytes,
+      orphanedFiles,
+      orphanedSizeBytes,
+    };
+  } catch (err) {
+    console.error('[storage] Error getting user storage stats:', err);
+    return empty;
   }
 }
 

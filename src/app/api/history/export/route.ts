@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getApiHitById } from '@/lib/db';
 import { convertImageToBase64DataUrl } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
-import { parseUrls, NO_CACHE_HEADERS } from '@/lib/utils';
+import { parseUrls, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
   } catch (err: unknown) {
     console.error('[export] Failed to export history record:', err);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat memproses ekspor: ' + (err instanceof Error ? err.message : String(err)) },
+      { error: toClientErrorMessage(err, 'Terjadi kesalahan saat memproses ekspor') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

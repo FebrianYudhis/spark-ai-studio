@@ -7,7 +7,8 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:utils": "node scripts/check-utils.ts"
   },
   "dependencies": {
     "lucide-react": "^1.44.0",

@@ -30,17 +30,32 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Memformat timestamp tanggal (termasuk format SQLite `YYYY-MM-DD HH:MM:SS`)
- * secara aman agar tidak memicu "Invalid Date" di browser Safari / iOS (WebKit)
- * dan tidak melompat zona waktu karena penambahan 'Z' yang tidak perlu.
+ * Zona waktu tampilan tanggal. Default UTC+7 (Asia/Jakarta); dapat diubah via
+ * env NEXT_PUBLIC_APP_TIMEZONE (mis. 'UTC' untuk UTC+0).
  */
-export function formatSafeDate(dateStr?: string | null): string {
+export const APP_TIMEZONE = process.env.NEXT_PUBLIC_APP_TIMEZONE || 'Asia/Jakarta';
+
+/**
+ * Memformat timestamp tanggal secara aman agar tidak memicu "Invalid Date" di
+ * browser Safari / iOS (WebKit). Timestamp tanpa penanda zona (format SQLite
+ * `YYYY-MM-DD HH:MM:SS`) diperlakukan sebagai UTC, lalu ditampilkan pada APP_TIMEZONE.
+ */
+export function formatSafeDate(dateStr?: string | null, timeZone: string = APP_TIMEZONE): string {
   if (!dateStr) return '-';
   try {
     const trimmed = dateStr.trim();
-    const safeIso = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
+    const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(trimmed);
+    let safeIso = trimmed;
+    if (!hasZone) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        safeIso = `${trimmed}T00:00:00Z`;
+      } else {
+        safeIso = `${trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T')}Z`;
+      }
+    }
     const date = new Date(safeIso);
-    return isNaN(date.getTime()) ? dateStr : date.toLocaleString('id-ID');
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleString('id-ID', { timeZone });
   } catch {
     return dateStr;
   }
@@ -56,6 +71,25 @@ export function maskToken(token?: string | null): string {
   if (!isTokenConfigured(token)) return 'Belum diatur';
   const value = token as string;
   return value.length > 8 ? `${value.slice(0, 4)}...${value.slice(-4)}` : '••••••••';
+}
+
+/**
+ * Apakah aplikasi berjalan di belakang reverse-proxy tepercaya.
+ * Hanya bila aktif, header proxy (X-Forwarded-For / X-Forwarded-Proto) boleh dipercaya;
+ * jika tidak, klien dapat memalsukannya sendiri (Next.js hanya mengisi bila belum ada).
+ */
+export function isTrustProxyEnabled(): boolean {
+  return process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1';
+}
+
+/**
+ * Pesan error ramah untuk klien. Detail mentah hanya disertakan bila
+ * NODE_ENV != production atau EXPOSE_ERROR_DETAILS=true (opsional untuk debugging).
+ */
+export function toClientErrorMessage(err: unknown, friendly: string): string {
+  const detail = err instanceof Error ? err.message : String(err ?? '');
+  const expose = process.env.NODE_ENV !== 'production' || process.env.EXPOSE_ERROR_DETAILS === 'true';
+  return expose && detail ? `${friendly} (${detail})` : friendly;
 }
 
 /** Header anti-cache untuk respons API yang bersifat privat per pengguna. */

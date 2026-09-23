@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { NO_CACHE_HEADERS } from '@/lib/utils';
+import { NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +23,7 @@ export async function GET() {
   } catch (err: unknown) {
     console.error('[auth/me] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Gagal mengambil data user.' },
+      { error: toClientErrorMessage(err, 'Gagal mengambil data user') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

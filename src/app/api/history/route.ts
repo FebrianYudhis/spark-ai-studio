@@ -16,9 +16,24 @@ import {
   cleanupOrphanedFiles,
 } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
-import { parseUrls, NO_CACHE_HEADERS } from '@/lib/utils';
+import { parseUrls, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export const dynamic = 'force-dynamic';
+
+/** Cek apakah semua URL sudah menunjuk file lokal /uploads/ yang benar-benar ada. */
+function allLocalFilesExist(urls: string[]): boolean {
+  if (urls.length === 0) return false;
+  return urls.every((u) => {
+    if (!u.startsWith('/uploads/')) return false;
+    try {
+      return fs.existsSync(path.join(process.cwd(), 'public', u));
+    } catch {
+      return false;
+    }
+  });
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -67,7 +82,7 @@ export async function GET(req: NextRequest) {
     console.error('[history] GET error:', err);
     return NextResponse.json(
       {
-        error: 'Terjadi kesalahan saat memuat riwayat: ' + (err instanceof Error ? err.message : String(err)),
+        error: toClientErrorMessage(err, 'Terjadi kesalahan saat memuat riwayat'),
       },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
@@ -107,6 +122,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Response payload kosong atau tidak valid' }, { status: 400, headers: NO_CACHE_HEADERS });
     }
 
+    // Short-circuit: bila gambar hasil sudah tersimpan lokal, gunakan langsung tanpa parsing payload.
+    const localResultUrls = parseUrls(item.result_image_url).filter((u) => u.startsWith('/uploads/'));
+    if (allLocalFilesExist(localResultUrls)) {
+      const finalLocal = localResultUrls.length > 1 ? JSON.stringify(localResultUrls) : localResultUrls[0];
+      return NextResponse.json({
+        success: true,
+        resultImageUrl: finalLocal,
+        resultImageUrls: localResultUrls,
+        message: `${localResultUrls.length} gambar sudah tersimpan di lokal.`
+      }, { headers: NO_CACHE_HEADERS });
+    }
+
     const rawImages = extractImageStrings(responseData);
     if (rawImages.length === 0) {
       return NextResponse.json({
@@ -144,7 +171,7 @@ export async function POST(req: NextRequest) {
     }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     return NextResponse.json({
-      error: 'Terjadi kesalahan: ' + (err instanceof Error ? err.message : String(err))
+      error: toClientErrorMessage(err, 'Terjadi kesalahan saat mengambil ulang gambar')
     }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
@@ -200,7 +227,7 @@ export async function DELETE(req: NextRequest) {
   } catch (err: unknown) {
     console.error('[history] DELETE error:', err);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat menghapus riwayat: ' + (err instanceof Error ? err.message : String(err)) },
+      { error: toClientErrorMessage(err, 'Terjadi kesalahan saat menghapus riwayat') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

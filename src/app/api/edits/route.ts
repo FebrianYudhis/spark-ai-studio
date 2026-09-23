@@ -5,7 +5,7 @@ import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
 import { validateImageSize, validateImageQuality, validateInputFidelity, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
-import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
+import { isTokenConfigured, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 import path from 'node:path';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     formData = await req.formData();
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: 'Gagal memproses form data: ' + (err instanceof Error ? err.message : String(err)) },
+      { error: toClientErrorMessage(err, 'Gagal memproses form data') },
       { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
   } catch (saveErr: unknown) {
     console.error('[edits] Failed to save uploaded files to local disk:', saveErr);
     return NextResponse.json(
-      { error: 'Gagal menyimpan file gambar ke disk server: ' + (saveErr instanceof Error ? saveErr.message : String(saveErr)) },
+      { error: toClientErrorMessage(saveErr, 'Gagal menyimpan file gambar ke disk server') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
@@ -270,10 +270,11 @@ export async function POST(req: NextRequest) {
     }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
-    let message = err instanceof Error ? err.message : String(err);
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      message = 'Koneksi ke gateway AI terputus atau dibatalkan sebelum proses selesai merespons.';
-    }
+    console.error('[edits] error:', err);
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    const message = isTimeout
+      ? 'Koneksi ke gateway AI terputus atau dibatalkan sebelum proses selesai merespons.'
+      : toClientErrorMessage(err, 'Gagal memproses edit gambar');
     const historyId = saveApiHit({
       user_id: user.id,
       type: 'edit',

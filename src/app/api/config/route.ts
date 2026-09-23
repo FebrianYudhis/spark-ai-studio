@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserSettings, updateUserSettings } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
-import { isTokenConfigured, maskToken, NO_CACHE_HEADERS } from '@/lib/utils';
+import { isTokenConfigured, maskToken, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,6 +103,27 @@ export async function POST(req: NextRequest) {
     const retentionDays = source.retentionDays !== undefined ? Number(source.retentionDays) : (source.retention_days !== undefined ? Number(source.retention_days) : undefined);
     const retentionMaxItems = source.retentionMaxItems !== undefined ? Number(source.retentionMaxItems) : (source.retention_max_items !== undefined ? Number(source.retention_max_items) : undefined);
 
+    // Validasi tipe: semua kolom teks harus string bila disertakan (mencegah .trim() pada non-string)
+    const stringFields: Array<[string, unknown]> = [
+      ['baseUrl', baseUrl],
+      ['token', token],
+      ['generationsModel', generationsModel],
+      ['editsModel', editsModel],
+      ['enhancerBaseUrl', enhancerBaseUrl],
+      ['enhancerToken', enhancerToken],
+      ['enhancerModel', enhancerModel],
+      ['enhancerPrompt', enhancerPrompt],
+    ];
+    const invalidFields = stringFields
+      .filter(([, value]) => value !== undefined && value !== null && typeof value !== 'string')
+      .map(([name]) => name);
+    if (invalidFields.length > 0) {
+      return NextResponse.json(
+        { error: `Tipe data tidak valid untuk: ${invalidFields.join(', ')}. Kolom teks harus berupa string.` },
+        { status: 400, headers: NO_CACHE_HEADERS }
+      );
+    }
+
     const payload = {
       base_url: baseUrl,
       api_token: token,
@@ -144,7 +165,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: 'Gagal menyimpan pengaturan: ' + (error instanceof Error ? error.message : String(error)) },
+      { error: toClientErrorMessage(error, 'Gagal menyimpan pengaturan') },
       { status: 500, headers: NO_CACHE_HEADERS }
     );
   }

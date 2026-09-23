@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { deleteSession } from '@/lib/db';
 import { SESSION_COOKIE_NAME } from '@/lib/auth';
+import { toClientErrorMessage } from '@/lib/utils';
 
 export async function POST() {
   try {
@@ -17,7 +18,7 @@ export async function POST() {
   } catch (err: unknown) {
     console.error('[auth/logout] error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Gagal memproses logout.' },
+      { error: toClientErrorMessage(err, 'Gagal memproses logout') },
       { status: 500 }
     );
   }

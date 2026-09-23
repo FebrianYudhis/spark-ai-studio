@@ -476,6 +476,25 @@ export function getAllActiveImageUrls(): string[] {
   return Array.from(urls);
 }
 
+/** URL gambar /uploads/ yang hanya dirujuk oleh riwayat milik satu user. */
+export function getActiveImageUrlsForUser(userId: number): string[] {
+  const db = getDb();
+  const stmt = db.prepare(`SELECT source_image_url, result_image_url FROM api_hits WHERE user_id = ?`);
+  const rows = stmt.all(userId) as Array<{ source_image_url?: string | null; result_image_url?: string | null }>;
+
+  const urls = new Set<string>();
+  for (const row of rows) {
+    for (const val of [row.source_image_url, row.result_image_url]) {
+      for (const url of parseUrls(val)) {
+        if (url.startsWith('/uploads/')) {
+          urls.add(url);
+        }
+      }
+    }
+  }
+  return Array.from(urls);
+}
+
 /**
  * Nilai default untuk user_settings milik akun baru, diambil dari variabel
  * lingkungan (opsional) dengan fallback ke konstanta bawaan. Token API sengaja
