@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserSettings, DEFAULT_ENHANCER_PROMPT } from '@/lib/db';
+import { getUserSettings } from '@/lib/db';
+import { DEFAULT_ENHANCER_PROMPT, DEFAULT_BASE_URL, DEFAULT_ENHANCER_MODEL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
+import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +13,7 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json(
         { error: 'Harap login terlebih dahulu untuk menggunakan Prompt Enhancer.' },
-        { status: 401 }
+        { status: 401, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return NextResponse.json(
         { error: 'Prompt teks wajib diisi sebelum melakukan enhance.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -29,18 +31,18 @@ export async function POST(req: NextRequest) {
     const enhancerToken = settings.enhancer_api_token?.trim();
 
     // Sesuai aturan: user harus mengisi API Token Enhancer sendiri tanpa fallback
-    if (!enhancerToken || enhancerToken === 'your_api_token_here' || enhancerToken.includes('dummy')) {
+    if (!isTokenConfigured(enhancerToken)) {
       return NextResponse.json(
         {
           error:
             'API Token untuk Prompt Enhancer belum diisi. Silakan buka menu Pengaturan (Settings) -> tab "Enhancer" dan masukkan API Token Anda.',
         },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
-    const baseUrl = (settings.enhancer_base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    const model = (settings.enhancer_model || 'gpt-4o-mini').trim();
+    const baseUrl = (settings.enhancer_base_url || DEFAULT_BASE_URL).replace(/\/+$/, '');
+    const model = (settings.enhancer_model || DEFAULT_ENHANCER_MODEL).trim();
     const systemPrompt = settings.enhancer_prompt?.trim() || DEFAULT_ENHANCER_PROMPT;
 
     const targetUrl = `${baseUrl}/chat/completions`;
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
         sanitized.errorMessage ||
         (data?.error as { message?: string })?.message ||
         `HTTP ${res.status}: Gagal menghubungi Chat Completions API (${res.statusText || 'Error'})`;
-      return NextResponse.json({ error: errMsg }, { status: res.status });
+      return NextResponse.json({ error: errMsg }, { status: res.status, headers: NO_CACHE_HEADERS });
     }
 
     let rawContent = extractChatContent(data);
@@ -98,7 +100,7 @@ export async function POST(req: NextRequest) {
             'Tidak menerima respon teks dari model Chat Completions. Response API: ' +
             rawText.slice(0, 300),
         },
-        { status: 500 }
+        { status: 500, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -118,7 +120,7 @@ export async function POST(req: NextRequest) {
       enhancedPrompt: rawContent,
       originalPrompt: prompt,
       model,
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     console.error('[enhance] Exception:', err);
     let message = err instanceof Error ? err.message : String(err);
@@ -129,7 +131,7 @@ export async function POST(req: NextRequest) {
       {
         error: 'Terjadi kesalahan saat memproses enhance prompt: ' + message,
       },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

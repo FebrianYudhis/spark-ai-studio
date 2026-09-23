@@ -2,14 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { getUserById, updateUserProfile, deleteUserSessions } from '@/lib/db';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
+import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-const NO_CACHE_HEADERS = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0',
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,7 +49,7 @@ export async function POST(req: NextRequest) {
       const cleanNewPassword = String(newPassword);
       const clientIp = getClientIp(req);
       const userKey = `profile:pwd:user:${authUser.id}`;
-      const ipKey = `profile:pwd:ip:${clientIp}`;
+      const ipKey = clientIp ? `profile:pwd:ip:${clientIp}` : null;
 
       // Periksa rate limit percobaan ubah password (maks 5 kali salah per 5 menit)
       const userLimit = checkRateLimit(userKey, 5, 5 * 60 * 1000);

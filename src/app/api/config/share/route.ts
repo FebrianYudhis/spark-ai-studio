@@ -6,14 +6,9 @@ import {
   acceptConfigShare, rejectConfigShare, deleteConfigShare,
 } from '@/lib/db';
 import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rateLimiter';
+import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-const NO_CACHE_HEADERS = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0',
-};
 
 function userSafeSettings(settings: ReturnType<typeof getUserSettings>) {
   return {
@@ -56,7 +51,7 @@ export async function POST(req: NextRequest) {
   // Rate limit permintaan share per user
   const shareKey = `config_share:user:${user.id}`;
   const clientIp = getClientIp(req);
-  const ipKey = `config_share:ip:${clientIp}`;
+  const ipKey = clientIp ? `config_share:ip:${clientIp}` : null;
   const userLimit = checkRateLimit(shareKey, 10, 5 * 60 * 1000);
   const ipLimit = checkRateLimit(ipKey, 20, 5 * 60 * 1000);
   if (!userLimit.allowed || !ipLimit.allowed) {

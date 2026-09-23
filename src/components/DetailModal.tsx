@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, Download, FileText, AlertCircle, MessageSquare, RefreshCw } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
-import { formatSafeDate } from '@/lib/models';
+import { parseUrls, formatBytes, formatSafeDate } from '@/lib/utils';
 import { copyToClipboard as writeToClipboard } from '@/lib/clipboard';
 import { triggerDownload } from '@/lib/imageHelper';
 
@@ -149,24 +149,6 @@ export default function DetailModal({
       })()
     : '{}';
 
-  const formatBytes = (bytes?: number | null) => {
-    if (!bytes) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
-
-  const parseUrls = (val?: string | null): string[] => {
-    if (!val) return [];
-    if (val.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [val];
-  };
-
   const sourceUrls = parseUrls(item.source_image_url);
   const resultUrls = parseUrls(currentResultImageUrl);
 
@@ -243,7 +225,7 @@ export default function DetailModal({
               <div>
                 <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">File Gambar Sumber</p>
                 <p className="text-sm text-emerald-700 font-medium mt-1 truncate" title={item.source_image_name || ''}>
-                  {sourceUrls.length > 1 ? `${sourceUrls.length} file gambar: ` : ''}{item.source_image_name || '-'} ({formatBytes(item.source_image_size)})
+                  {sourceUrls.length > 1 ? `${sourceUrls.length} file gambar: ` : ''}{item.source_image_name || '-'} ({item.source_image_size ? formatBytes(item.source_image_size) : '-'})
                 </p>
               </div>
             )}

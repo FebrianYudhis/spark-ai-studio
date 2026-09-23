@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserSettings, updateUserSettings } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
+import { isTokenConfigured, maskToken, NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-const NO_CACHE_HEADERS = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0',
-};
 
 export async function GET(req: NextRequest) {
   const user = await getAuthUser();
@@ -20,26 +15,6 @@ export async function GET(req: NextRequest) {
   }
 
   const settings = getUserSettings(user.id);
-  const token = settings.api_token || '';
-  const enhancerToken = settings.enhancer_api_token || '';
-
-  const isConfigured = Boolean(
-    token &&
-    token !== 'your_api_token_here' &&
-    !token.includes('dummy')
-  );
-  const maskedToken = isConfigured
-    ? (token.length > 8 ? `${token.slice(0, 4)}...${token.slice(-4)}` : '••••••••')
-    : 'Belum diatur';
-
-  const isEnhancerConfigured = Boolean(
-    enhancerToken &&
-    enhancerToken !== 'your_api_token_here' &&
-    !enhancerToken.includes('dummy')
-  );
-  const maskedEnhancerToken = isEnhancerConfigured
-    ? (enhancerToken.length > 8 ? `${enhancerToken.slice(0, 4)}...${enhancerToken.slice(-4)}` : '••••••••')
-    : 'Belum diatur';
 
   const { searchParams } = new URL(req.url);
   const isExport = searchParams.get('export') === 'download' || searchParams.get('export') === 'true';
@@ -80,15 +55,15 @@ export async function GET(req: NextRequest) {
     {
       // Image Studio Settings
       baseUrl: settings.base_url,
-      isConfigured,
-      maskedToken,
+      isConfigured: isTokenConfigured(settings.api_token),
+      maskedToken: maskToken(settings.api_token),
       defaultGenerationsModel: settings.generations_model,
       defaultEditsModel: settings.edits_model,
 
       // Prompt Enhancer Settings
       enhancerBaseUrl: settings.enhancer_base_url,
-      isEnhancerConfigured,
-      maskedEnhancerToken,
+      isEnhancerConfigured: isTokenConfigured(settings.enhancer_api_token),
+      maskedEnhancerToken: maskToken(settings.enhancer_api_token),
       enhancerModel: settings.enhancer_model,
       enhancerPrompt: settings.enhancer_prompt,
 
@@ -143,34 +118,19 @@ export async function POST(req: NextRequest) {
 
     const updated = updateUserSettings(user.id, payload);
 
-    const isConfigured = Boolean(
-      updated.api_token &&
-      updated.api_token !== 'your_api_token_here' &&
-      !updated.api_token.includes('dummy')
-    );
-    const maskedToken = isConfigured
-      ? (updated.api_token.length > 8 ? `${updated.api_token.slice(0, 4)}...${updated.api_token.slice(-4)}` : '••••••••')
-      : 'Belum diatur';
-
-    const isEnhancerConfigured = Boolean(
-      updated.enhancer_api_token &&
-      updated.enhancer_api_token !== 'your_api_token_here' &&
-      !updated.enhancer_api_token.includes('dummy')
-    );
-
     return NextResponse.json(
       {
         success: true,
         message: 'Pengaturan berhasil disimpan ke database SQLite!',
         config: {
           baseUrl: updated.base_url,
-          isConfigured,
-          maskedToken,
+          isConfigured: isTokenConfigured(updated.api_token),
+          maskedToken: maskToken(updated.api_token),
           defaultGenerationsModel: updated.generations_model,
           defaultEditsModel: updated.edits_model,
 
           enhancerBaseUrl: updated.enhancer_base_url,
-          isEnhancerConfigured,
+          isEnhancerConfigured: isTokenConfigured(updated.enhancer_api_token),
           enhancerModel: updated.enhancer_model,
           enhancerPrompt: updated.enhancer_prompt,
 

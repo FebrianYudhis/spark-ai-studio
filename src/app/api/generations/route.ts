@@ -3,8 +3,9 @@ import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
-import { validateImageSize, validateImageQuality } from '@/lib/models';
+import { validateImageSize, validateImageQuality, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
+import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,14 +14,24 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json(
       { error: 'Harap login terlebih dahulu untuk membuat gambar.' },
-      { status: 401 }
+      { status: 401, headers: NO_CACHE_HEADERS }
     );
   }
 
   const settings = getUserSettings(user.id);
-  const baseUrl = settings.base_url || 'https://api.openai.com/v1';
+  const baseUrl = settings.base_url || DEFAULT_BASE_URL;
   const token = settings.api_token || '';
-  const defaultModel = settings.generations_model || 'gpt-image-2.5';
+  const defaultModel = settings.generations_model || DEFAULT_MODEL;
+
+  if (!isTokenConfigured(token)) {
+    return NextResponse.json(
+      {
+        error:
+          'API Token belum diatur. Silakan buka menu Pengaturan (Settings) -> tab "Image" dan masukkan API Token Anda.',
+      },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
+  }
 
   let body: {
     model?: string;
@@ -35,8 +46,8 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: 'Invalid JSON body' },
-      { status: 400 }
+      { error: 'Body JSON tidak valid' },
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -44,7 +55,7 @@ export async function POST(req: NextRequest) {
   if (!prompt) {
     return NextResponse.json(
       { error: 'Prompt wajib diisi' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -59,7 +70,7 @@ export async function POST(req: NextRequest) {
   if (!sizeValidation.valid) {
     return NextResponse.json(
       { error: sizeValidation.error || 'Ukuran gambar tidak valid' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -68,7 +79,7 @@ export async function POST(req: NextRequest) {
   if (!qualityValidation.valid) {
     return NextResponse.json(
       { error: qualityValidation.error || 'Kualitas gambar tidak valid' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -161,7 +172,7 @@ export async function POST(req: NextRequest) {
       resultImageUrl,
       response: sanitizedResponsePayload,
       errorMessage,
-    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400) });
+    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
     let message = err instanceof Error ? err.message : String(err);
@@ -188,6 +199,6 @@ export async function POST(req: NextRequest) {
       targetUrl,
       requestPayload,
       errorMessage: message,
-    }, { status: 500 });
+    }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

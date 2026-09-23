@@ -3,6 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
 import { cleanStoredPayloadsInDb } from './payloadSanitizer';
+import { parseUrls } from './utils';
+import { DEFAULT_ENHANCER_PROMPT, DEFAULT_MODEL, DEFAULT_BASE_URL, DEFAULT_ENHANCER_MODEL } from './models';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'spark_ai_studio.db');
@@ -50,9 +52,6 @@ export function getDb(): DatabaseSync {
   }
   return dbInstance;
 }
-
-import { DEFAULT_ENHANCER_PROMPT } from './models';
-export { DEFAULT_ENHANCER_PROMPT };
 
 function initSchema(db: DatabaseSync) {
   try {
@@ -131,49 +130,28 @@ function initSchema(db: DatabaseSync) {
       responded_at DATETIME
     );
     CREATE INDEX IF NOT EXISTS idx_config_shares_to_user ON config_shares(to_user_id);
-
-    CREATE TABLE IF NOT EXISTS rate_limit_attempts (
-      key TEXT PRIMARY KEY,
-      attempts INTEGER NOT NULL DEFAULT 1,
-      first_attempt_at INTEGER NOT NULL,
-      blocked_until INTEGER NOT NULL DEFAULT 0
-    );
-
-
-    CREATE TABLE IF NOT EXISTS app_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
-      api_token TEXT NOT NULL DEFAULT '',
-      generations_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
-      edits_model TEXT NOT NULL DEFAULT 'gpt-image-2.5',
-      enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
-      enhancer_api_token TEXT NOT NULL DEFAULT '',
-      enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
-      enhancer_prompt TEXT NOT NULL DEFAULT '',
-      updated_at TEXT NOT NULL
-    );
   `);
 
   // Migrasi otomatis kolom user_id pada api_hits jika tabel lama belum memiliki user_id
+  let migratedUserIdColumn = false;
   try {
     const tableInfo = db.prepare(`PRAGMA table_info(api_hits)`).all() as Array<{ name: string }>;
     const hasUserId = tableInfo.some((col) => col.name === 'user_id');
     if (!hasUserId) {
       db.exec(`ALTER TABLE api_hits ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE`);
+      migratedUserIdColumn = true;
     }
   } catch {}
 
-  // Sesuai preferensi user: bersihkan riwayat lama yang tidak memiliki relasi user
-  try {
-    db.exec(`DELETE FROM api_hits WHERE user_id IS NULL`);
-  } catch {}
+  // Bersihkan riwayat lama tanpa relasi user HANYA sekali saat migrasi kolom user_id di atas.
+  if (migratedUserIdColumn) {
+    try {
+      db.exec(`DELETE FROM api_hits WHERE user_id IS NULL`);
+    } catch {}
+  }
 
   // Migrasi otomatis untuk menambahkan kolom enhancer jika tabel sudah ada sebelumnya
   const alterMigrations = [
-    `ALTER TABLE app_settings ADD COLUMN enhancer_base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1'`,
-    `ALTER TABLE app_settings ADD COLUMN enhancer_api_token TEXT NOT NULL DEFAULT ''`,
-    `ALTER TABLE app_settings ADD COLUMN enhancer_model TEXT NOT NULL DEFAULT 'gpt-4o-mini'`,
-    `ALTER TABLE app_settings ADD COLUMN enhancer_prompt TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE user_settings ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE user_settings ADD COLUMN retention_max_items INTEGER NOT NULL DEFAULT 0`,
   ];
@@ -182,6 +160,11 @@ function initSchema(db: DatabaseSync) {
       db.exec(sql);
     } catch {}
   }
+
+  // Buang tabel lama yang sudah tidak dipakai lagi (settings global & rate limit di memori)
+  try {
+    db.exec(`DROP TABLE IF EXISTS app_settings; DROP TABLE IF EXISTS rate_limit_attempts;`);
+  } catch {}
 
   // Migrasi otomatis: sesuaikan format ringkasan nama gambar pada data riwayat lama ke format baru [image 1: ...]
   try {
@@ -198,39 +181,6 @@ function initSchema(db: DatabaseSync) {
         updated = updated.replace(/\[primary:\s*/g, '[image 1: ');
       }
       db.prepare(`UPDATE api_hits SET source_image_name = ? WHERE id = ?`).run(updated, row.id);
-    }
-  } catch {}
-
-  // Seed default settings langsung dari data bawaan / dummy (tanpa ketergantungan pada file .env)
-  try {
-    const existing = db.prepare(`SELECT id FROM app_settings WHERE id = 1`).get();
-    if (!existing) {
-      const initialBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
-      const initialToken = process.env.AI_API_TOKEN || 'sk-proj-dummyapikey1234567890abcdef';
-      const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
-      const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
-      const initialEnhancerBaseUrl = process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1';
-      const initialEnhancerToken = process.env.AI_ENHANCER_API_TOKEN || '';
-      const initialEnhancerModel = process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini';
-      const now = new Date().toISOString();
-      db.prepare(`
-        INSERT INTO app_settings (
-          id, base_url, api_token, generations_model, edits_model,
-          enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
-          updated_at
-        )
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        initialBaseUrl,
-        initialToken,
-        initialGenModel,
-        initialEditModel,
-        initialEnhancerBaseUrl,
-        initialEnhancerToken,
-        initialEnhancerModel,
-        DEFAULT_ENHANCER_PROMPT,
-        now
-      );
     }
   } catch {}
 
@@ -514,130 +464,32 @@ export function getAllActiveImageUrls(): string[] {
   const urls = new Set<string>();
 
   for (const row of rows) {
-    const parseField = (val?: string | null) => {
-      if (!val) return;
-      if (val.startsWith('[')) {
-        try {
-          const parsed = JSON.parse(val);
-          if (Array.isArray(parsed)) {
-            for (const item of parsed) {
-              if (typeof item === 'string' && item.startsWith('/uploads/')) {
-                urls.add(item);
-              }
-            }
-            return;
-          }
-        } catch {}
+    for (const val of [row.source_image_url, row.result_image_url]) {
+      for (const url of parseUrls(val)) {
+        if (url.startsWith('/uploads/')) {
+          urls.add(url);
+        }
       }
-      if (val.startsWith('/uploads/')) {
-        urls.add(val);
-      }
-    };
-
-    parseField(row.source_image_url);
-    parseField(row.result_image_url);
+    }
   }
 
   return Array.from(urls);
 }
 
-export interface AppSettings {
-  id: number;
-  base_url: string;
-  api_token: string;
-  generations_model: string;
-  edits_model: string;
-  enhancer_base_url: string;
-  enhancer_api_token: string;
-  enhancer_model: string;
-  enhancer_prompt: string;
-  updated_at: string;
-}
-
-export function getAppSettings(): AppSettings {
-  const db = getDb();
-  let row = db.prepare(`SELECT * FROM app_settings WHERE id = 1`).get() as unknown as AppSettings | undefined;
-
-  if (!row) {
-    const initialBaseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
-    const initialToken = process.env.AI_API_TOKEN || '';
-    const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
-    const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
-
-    const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO app_settings (
-        id, base_url, api_token, generations_model, edits_model,
-        enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
-        updated_at
-      )
-      VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, ?)
-    `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT, now);
-
-    row = db.prepare(`SELECT * FROM app_settings WHERE id = 1`).get() as unknown as AppSettings;
-  }
-
-  // Jamin nilai default aman jika kolom baru null/undefined karena migrasi lama
+/**
+ * Nilai default untuk user_settings milik akun baru, diambil dari variabel
+ * lingkungan (opsional) dengan fallback ke konstanta bawaan. Token API sengaja
+ * dikosongkan agar setiap pengguna mengisi kredensialnya sendiri.
+ */
+function getDefaultUserSettings() {
   return {
-    ...row,
-    enhancer_base_url: row.enhancer_base_url || 'https://api.openai.com/v1',
-    enhancer_api_token: row.enhancer_api_token || '',
-    enhancer_model: row.enhancer_model || 'gpt-4o-mini',
-    enhancer_prompt:
-      row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
-        ? row.enhancer_prompt
-        : DEFAULT_ENHANCER_PROMPT,
+    base_url: process.env.AI_BASE_URL || DEFAULT_BASE_URL,
+    generations_model: process.env.AI_GENERATIONS_MODEL || DEFAULT_MODEL,
+    edits_model: process.env.AI_EDITS_MODEL || DEFAULT_MODEL,
+    enhancer_base_url: process.env.AI_ENHANCER_BASE_URL || DEFAULT_BASE_URL,
+    enhancer_model: process.env.AI_ENHANCER_MODEL || DEFAULT_ENHANCER_MODEL,
+    enhancer_prompt: DEFAULT_ENHANCER_PROMPT,
   };
-}
-
-export function updateAppSettings(input: {
-  base_url?: string;
-  api_token?: string;
-  generations_model?: string;
-  edits_model?: string;
-  enhancer_base_url?: string;
-  enhancer_api_token?: string;
-  enhancer_model?: string;
-  enhancer_prompt?: string;
-}): AppSettings {
-  const current = getAppSettings();
-  const nextBaseUrl = input.base_url !== undefined ? input.base_url.trim() : current.base_url;
-  const nextApiToken = input.api_token !== undefined ? input.api_token.trim() : current.api_token;
-  const nextGenModel = input.generations_model !== undefined ? input.generations_model.trim() : current.generations_model;
-  const nextEditModel = input.edits_model !== undefined ? input.edits_model.trim() : current.edits_model;
-  const nextEnhancerBaseUrl = input.enhancer_base_url !== undefined ? input.enhancer_base_url.trim() : current.enhancer_base_url;
-  const nextEnhancerApiToken = input.enhancer_api_token !== undefined ? input.enhancer_api_token.trim() : current.enhancer_api_token;
-  const nextEnhancerModel = input.enhancer_model !== undefined ? input.enhancer_model.trim() : current.enhancer_model;
-  const nextEnhancerPrompt = input.enhancer_prompt !== undefined ? input.enhancer_prompt.trim() : current.enhancer_prompt;
-
-  const db = getDb();
-  const now = new Date().toISOString();
-  db.prepare(`
-    UPDATE app_settings
-    SET
-      base_url = ?,
-      api_token = ?,
-      generations_model = ?,
-      edits_model = ?,
-      enhancer_base_url = ?,
-      enhancer_api_token = ?,
-      enhancer_model = ?,
-      enhancer_prompt = ?,
-      updated_at = ?
-    WHERE id = 1
-  `).run(
-    nextBaseUrl,
-    nextApiToken,
-    nextGenModel,
-    nextEditModel,
-    nextEnhancerBaseUrl,
-    nextEnhancerApiToken,
-    nextEnhancerModel,
-    nextEnhancerPrompt,
-    now
-  );
-
-  return getAppSettings();
 }
 
 // ==========================================
@@ -675,7 +527,7 @@ export function createUser(input: {
   const userId = Number(res.lastInsertRowid);
 
   // Buat default user_settings untuk user baru (Private Studio)
-  const defaultApp = getAppSettings();
+  const defaults = getDefaultUserSettings();
   db.prepare(`
     INSERT INTO user_settings (
       user_id, base_url, api_token, generations_model, edits_model,
@@ -683,18 +535,17 @@ export function createUser(input: {
       updated_at
     ) VALUES (
       ?, ?, '', ?, ?,
-      ?, ?, ?, ?,
+      ?, '', ?, ?,
       ?
     )
   `).run(
     userId,
-    defaultApp.base_url || process.env.AI_BASE_URL || 'https://api.openai.com/v1',
-    defaultApp.generations_model || process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5',
-    defaultApp.edits_model || process.env.AI_EDITS_MODEL || 'gpt-image-2.5',
-    defaultApp.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
-    defaultApp.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
-    defaultApp.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
-    defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
+    defaults.base_url,
+    defaults.generations_model,
+    defaults.edits_model,
+    defaults.enhancer_base_url,
+    defaults.enhancer_model,
+    defaults.enhancer_prompt,
     now
   );
 
@@ -711,12 +562,6 @@ export function getUserById(id: number): UserRecord | null {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
   return (row as unknown as UserRecord) ?? null;
-}
-
-export function getUsersCount(): number {
-  const db = getDb();
-  const row = db.prepare(`SELECT COUNT(*) as count FROM users`).get() as { count: number } | undefined;
-  return Number(row?.count ?? 0);
 }
 
 export function updateUserProfile(
@@ -828,7 +673,7 @@ export function getUserSettings(userId: number): UserSettings {
   let row = db.prepare(`SELECT * FROM user_settings WHERE user_id = ?`).get(userId) as unknown as UserSettings | undefined;
 
   if (!row) {
-    const defaultApp = getAppSettings();
+    const defaults = getDefaultUserSettings();
     const now = new Date().toISOString();
     db.prepare(`
       INSERT OR IGNORE INTO user_settings (
@@ -838,19 +683,18 @@ export function getUserSettings(userId: number): UserSettings {
         updated_at
       ) VALUES (
         ?, ?, '', ?, ?,
-        ?, ?, ?, ?,
+        ?, '', ?, ?,
         0, 0,
         ?
       )
     `).run(
       userId,
-      defaultApp.base_url || process.env.AI_BASE_URL || 'https://api.openai.com/v1',
-      defaultApp.generations_model || process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5',
-      defaultApp.edits_model || process.env.AI_EDITS_MODEL || 'gpt-image-2.5',
-      defaultApp.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
-      defaultApp.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
-      defaultApp.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
-      defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
+      defaults.base_url,
+      defaults.generations_model,
+      defaults.edits_model,
+      defaults.enhancer_base_url,
+      defaults.enhancer_model,
+      defaults.enhancer_prompt,
       now
     );
     row = db.prepare(`SELECT * FROM user_settings WHERE user_id = ?`).get(userId) as unknown as UserSettings;
@@ -858,9 +702,9 @@ export function getUserSettings(userId: number): UserSettings {
 
   return {
     ...row,
-    enhancer_base_url: row.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
-    enhancer_api_token: row.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
-    enhancer_model: row.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
+    enhancer_base_url: row.enhancer_base_url || DEFAULT_BASE_URL,
+    enhancer_api_token: row.enhancer_api_token || '',
+    enhancer_model: row.enhancer_model || DEFAULT_ENHANCER_MODEL,
     enhancer_prompt:
       row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
         ? row.enhancer_prompt

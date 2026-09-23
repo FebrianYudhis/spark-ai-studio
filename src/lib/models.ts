@@ -8,6 +8,8 @@ export const AVAILABLE_MODELS = [
 export type AvailableModel = (typeof AVAILABLE_MODELS)[number];
 
 export const DEFAULT_MODEL: AvailableModel = 'gpt-image-2.5';
+export const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+export const DEFAULT_ENHANCER_MODEL = 'gpt-4o-mini';
 
 export function isValidModel(model: string): model is AvailableModel {
   return AVAILABLE_MODELS.includes(model as AvailableModel);
@@ -21,18 +23,6 @@ export interface SizeValidationResult {
   width?: number;
   height?: number;
 }
-
-export const STANDARD_IMAGE_SIZES = [
-  { label: '1024x1024 (1:1 Standar)', value: '1024x1024' },
-  { label: '1536x1024 (3:2 Standar)', value: '1536x1024' },
-  { label: '1024x1536 (2:3 Standar)', value: '1024x1536' },
-  { label: '1536x864 (16:9 HD)', value: '1536x864' },
-  { label: '864x1536 (9:16 Story)', value: '864x1536' },
-  { label: 'auto (Ukuran Otomatis)', value: 'auto' },
-] as const;
-
-export const DEFAULT_IMAGE_SIZE = 'auto';
-export const DEFAULT_SIZE_PRESET = 'auto';
 
 export interface SizePresetOption {
   id: string;
@@ -203,8 +193,6 @@ export function validateImageSize(sizeStr: string): SizeValidationResult {
 
 export type ImageQuality = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-export const DEFAULT_QUALITY: ImageQuality = 'auto';
-
 /**
  * Memeriksa apakah model mendukung kualitas ultra (xhigh dan max).
  * gpt-image-2.5-sunburst dan gpt-image-2.5-flare (termasuk snapshot 2026-09-08) mendukung xhigh dan max.
@@ -305,23 +293,6 @@ export function validateImageQuality(qualityStr: string, model: string): Quality
       modelSupportsUltraQuality(model) ? ', xhigh, max' : ''
     }.`,
   };
-}
-
-/**
- * Memformat string timestamp tanggal (termasuk format SQLite YYYY-MM-DD HH:MM:SS)
- * secara aman agar tidak memicu "Invalid Date" di browser Safari / iOS (WebKit)
- * dan tidak melompat zona waktu karena penambahan 'Z' yang tidak perlu.
- */
-export function formatSafeDate(dateStr?: string | null): string {
-  if (!dateStr) return '-';
-  try {
-    const trimmed = dateStr.trim();
-    const safeIso = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T');
-    const date = new Date(safeIso);
-    return isNaN(date.getTime()) ? dateStr : date.toLocaleString('id-ID');
-  } catch {
-    return dateStr;
-  }
 }
 
 export type InputFidelity = 'auto' | 'high' | 'low';

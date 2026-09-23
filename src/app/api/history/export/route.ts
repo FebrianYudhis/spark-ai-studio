@@ -2,17 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getApiHitById } from '@/lib/db';
 import { convertImageToBase64DataUrl } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
+import { parseUrls, NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-function parseUrls(urlData: string | null | undefined): string[] {
-  if (!urlData) return [];
-  try {
-    const parsed = JSON.parse(urlData);
-    if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
-  } catch {}
-  return [urlData].filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
-}
 
 /**
  * Membersihkan payload JSON dari duplikasi string Base64 yang sangat panjang.
@@ -56,19 +48,19 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Harap login terlebih dahulu' }, { status: 401 });
+      return NextResponse.json({ error: 'Harap login terlebih dahulu' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get('id');
 
     if (!idParam || isNaN(Number(idParam))) {
-      return NextResponse.json({ error: 'Parameter id riwayat wajib disertakan' }, { status: 400 });
+      return NextResponse.json({ error: 'Parameter id riwayat wajib disertakan' }, { status: 400, headers: NO_CACHE_HEADERS });
     }
 
     const record = getApiHitById(Number(idParam), user.id);
     if (!record) {
-      return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404 });
+      return NextResponse.json({ error: 'Data riwayat tidak ditemukan' }, { status: 404, headers: NO_CACHE_HEADERS });
     }
 
     // 1. Ekstrak dan konversi source images ke Base64 (image 1, image 2, dst.)
@@ -140,7 +132,7 @@ export async function GET(request: NextRequest) {
     console.error('[export] Failed to export history record:', err);
     return NextResponse.json(
       { error: 'Terjadi kesalahan saat memproses ekspor: ' + (err instanceof Error ? err.message : String(err)) },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

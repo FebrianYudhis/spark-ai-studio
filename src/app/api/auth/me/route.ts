@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
+import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-const NO_CACHE_HEADERS = {
-  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-  'Pragma': 'no-cache',
-  'Expires': '0',
-};
 
 export async function GET() {
   try {

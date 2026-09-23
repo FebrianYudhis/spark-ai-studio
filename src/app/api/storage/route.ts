@@ -3,22 +3,15 @@ import { getAllActiveImageUrls, cleanExpiredSessions, cleanStoredPayloads } from
 import { applyRetentionPolicy } from '@/lib/retention';
 import { getStorageStats, cleanupOrphanedFiles } from '@/lib/storage';
 import { getAuthUser } from '@/lib/auth';
+import { formatBytes, NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
-
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-}
 
 export async function GET() {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const activeUrls = getAllActiveImageUrls();
@@ -32,11 +25,11 @@ export async function GET() {
         formattedActiveSize: formatBytes(stats.activeSizeBytes),
         formattedOrphanedSize: formatBytes(stats.orphanedSizeBytes),
       },
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (error: unknown) {
     return NextResponse.json(
       { error: 'Gagal mengambil statistik penyimpanan: ' + (error instanceof Error ? error.message : String(error)) },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -45,7 +38,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getAuthUser();
     if (!user) {
-      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ error: 'Harap login terlebih dahulu.' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -80,7 +73,7 @@ export async function POST(req: NextRequest) {
         message: details.length > 0
           ? `Berhasil membersihkan: ${details.join(', ')}.`
           : 'Penyimpanan dan database sudah bersih. Tidak ditemukan file sampah atau data redundan.',
-      });
+      }, { headers: NO_CACHE_HEADERS });
     }
 
     if (action === 'apply_retention') {
@@ -93,14 +86,14 @@ export async function POST(req: NextRequest) {
         formattedFreedSize: formatBytes(retentionRes.freedBytes),
         deletedFiles: retentionRes.deletedFiles,
         message: retentionRes.message,
-      });
+      }, { headers: NO_CACHE_HEADERS });
     }
 
-    return NextResponse.json({ error: `Aksi tidak dikenal: ${action}` }, { status: 400 });
+    return NextResponse.json({ error: `Aksi tidak dikenal: ${action}` }, { status: 400, headers: NO_CACHE_HEADERS });
   } catch (error: unknown) {
     return NextResponse.json(
       { error: 'Gagal membersihkan penyimpanan: ' + (error instanceof Error ? error.message : String(error)) },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

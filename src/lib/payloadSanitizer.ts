@@ -1,20 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { parseUrls } from './utils';
 
 /**
  * Utilitas untuk membersihkan duplikasi Base64 dan URL mentah berukuran raksasa dari objek payload.
  * Hanya mengganti data Base64 / URL JIKA gambar telah dipastikan berhasil tersimpan di file lokal disk (/uploads/...).
  */
-
-function parseUrls(val?: string | null): string[] {
-  if (!val) return [];
-  if (val.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(val);
-      if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
-    } catch {}
-  }
-  return [val].filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
-}
 
 /**
  * Membersihkan objek payload response AI setelah gambar hasil dipastikan tersimpan di disk lokal.
@@ -41,7 +31,7 @@ export function sanitizeResponsePayloadAfterSave(
  * @param payload Objek request asli
  * @param savedSourceUrls Daftar path file lokal (/uploads/...png) gambar sumber
  */
-export function sanitizeRequestPayloadAfterSave(
+function sanitizeRequestPayloadAfterSave(
   payload: unknown,
   savedSourceUrls: string[]
 ): unknown {

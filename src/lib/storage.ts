@@ -526,39 +526,6 @@ export function cleanupOrphanedFiles(
 }
 
 /**
- * Menghapus seluruh file di folder /public/uploads/
- */
-export function cleanupAllUploadFiles(): { deletedCount: number; freedBytes: number } {
-  try {
-    if (!fs.existsSync(UPLOAD_DIR)) {
-      return { deletedCount: 0, freedBytes: 0 };
-    }
-
-    const files = fs.readdirSync(UPLOAD_DIR);
-    let deletedCount = 0;
-    let freedBytes = 0;
-
-    for (const file of files) {
-      if (file.startsWith('.')) continue;
-      const filePath = path.join(UPLOAD_DIR, file);
-      try {
-        const stat = fs.statSync(filePath);
-        if (stat.isFile()) {
-          freedBytes += stat.size;
-          fs.unlinkSync(filePath);
-          deletedCount++;
-        }
-      } catch {}
-    }
-
-    return { deletedCount, freedBytes };
-  } catch (err) {
-    console.error('[storage] Error cleaning all upload files:', err);
-    return { deletedCount: 0, freedBytes: 0 };
-  }
-}
-
-/**
  * Mengonversi path file lokal (/uploads/...), URL remote, atau Base64 ke format Base64 Data URL (data:image/...;base64,...)
  */
 export async function convertImageToBase64DataUrl(imagePathOrUrl: string): Promise<string | null> {

@@ -3,11 +3,12 @@ import { cookies } from 'next/headers';
 import { createUser, getUserByUsername, createSession } from '@/lib/db';
 import { hashPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt } from '@/lib/rateLimiter';
+import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
-    const ipKey = `register:ip:${clientIp}`;
+    const ipKey = clientIp ? `register:ip:${clientIp}` : null;
 
     // Batasi registrasi maksimal 10 akun per 15 menit per IP untuk mencegah bot
     const ipLimit = checkRateLimit(ipKey, 10, 15 * 60 * 1000);
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
         },
         {
           status: 429,
-          headers: { 'Retry-After': String(ipLimit.retryAfterSeconds ?? 60) },
+          headers: { ...NO_CACHE_HEADERS, 'Retry-After': String(ipLimit.retryAfterSeconds ?? 60) },
         }
       );
     }
@@ -33,21 +34,21 @@ export async function POST(req: Request) {
     if (!username || username.length < 3) {
       return NextResponse.json(
         { error: 'Username minimal 3 karakter.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
     if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
       return NextResponse.json(
         { error: 'Username hanya boleh huruf, angka, tanda minus (-), atau garis bawah (_).' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
     if (!password || password.length < 4) {
       return NextResponse.json(
         { error: 'Password minimal 4 karakter.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
     if (existing) {
       return NextResponse.json(
         { error: 'Username ini sudah digunakan, silakan pilih username lain.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -66,6 +67,9 @@ export async function POST(req: Request) {
       password_hash: hash,
       salt,
     });
+
+    // Registrasi sukses: jangan reset kuota, karena limit ini membatasi jumlah
+    // akun baru per IP (bukan percobaan gagal) agar pendaftaran massal tetap dicegah.
 
     // Otomatis buat sesi & login
     const sessionId = generateSessionId();
@@ -88,12 +92,12 @@ export async function POST(req: Request) {
         display_name: user.display_name,
         created_at: user.created_at,
       },
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     console.error('[auth/register] error:', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Gagal mendaftar akun baru.' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

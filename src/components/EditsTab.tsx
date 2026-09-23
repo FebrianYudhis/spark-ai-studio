@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Scissors, UploadCloud, Plus, Send, Download, RefreshCw, AlertTriangle, CheckCircle2, X, ChevronDown, ChevronUp, Settings, RotateCcw, Maximize2, Wand2, Loader2, HardDrive, MoreVertical, FileText } from 'lucide-react';
 import { showToast } from '@/lib/swal';
 import { isSupportedImageFile, compressImageIfOver10MB, triggerDownload } from '@/lib/imageHelper';
+import { formatBytes } from '@/lib/utils';
 import ErrorDetailModal, { ErrorDetailData } from './ErrorDetailModal';
 import {
   AVAILABLE_MODELS,
@@ -518,12 +519,6 @@ export default function EditsTab({
     showToast('Form Edits berhasil di-reset', 'info');
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
-
   const totalBytes =
     (primaryImage ? primaryImage.file.size : 0) +
     additionalImages.reduce((acc, it) => acc + it.file.size, 0);
@@ -845,7 +840,7 @@ export default function EditsTab({
                     </div>
                     <p className="text-xs font-semibold text-slate-800 truncate mt-1">{primaryImage.file.name}</p>
                     <p className="text-[11px] text-slate-500 font-mono">
-                      {formatFileSize(primaryImage.file.size)}
+                      {formatBytes(primaryImage.file.size)}
                     </p>
                   </div>
                   <button
@@ -944,7 +939,7 @@ export default function EditsTab({
                             {img.file.name}
                           </p>
                           <p className="text-[10px] text-slate-400 font-mono">
-                            {formatFileSize(img.file.size)}
+                            {formatBytes(img.file.size)}
                           </p>
                         </div>
                         <button
@@ -991,11 +986,11 @@ export default function EditsTab({
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] uppercase font-semibold text-slate-500 block">Total File Asli</span>
-                    <span className="text-sm font-bold font-mono text-slate-800">{formatFileSize(totalBytes)}</span>
+                    <span className="text-sm font-bold font-mono text-slate-800">{formatBytes(totalBytes)}</span>
                   </div>
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
                     <span className="text-[10px] uppercase font-semibold text-slate-500 block">Estimasi Payload (Base64)</span>
-                    <span className="text-sm font-bold font-mono text-indigo-700">{formatFileSize(estimatedPayloadBytes)}</span>
+                    <span className="text-sm font-bold font-mono text-indigo-700">{formatBytes(estimatedPayloadBytes)}</span>
                   </div>
                 </div>
 

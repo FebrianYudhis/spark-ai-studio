@@ -5,7 +5,8 @@ import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Do
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
 import { showToast, showError, showConfirm } from '@/lib/swal';
-import { formatSafeDate, type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
+import { type EditSessionData, type ImageQuality, type InputFidelity } from '@/lib/models';
+import { parseUrls, formatSafeDate } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/clipboard';
 import { triggerDownload } from '@/lib/imageHelper';
 
@@ -198,17 +199,6 @@ export default function HistoryTab({
       console.error('Delete error:', err);
       showError('Koneksi Gagal', 'Koneksi ke server gagal');
     }
-  };
-
-  const parseUrls = (val?: string | null): string[] => {
-    if (!val) return [];
-    if (val.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [val];
   };
 
   const getPageNumbers = () => {

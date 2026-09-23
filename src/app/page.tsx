@@ -10,7 +10,7 @@ import SettingsModal, { UserProfileData } from '@/components/SettingsModal';
 import AuthCard from '@/components/AuthCard';
 
 import { showConfirm, showToast } from '@/lib/swal';
-import { isValidModel, type EditSessionData, type AvailableModel } from '@/lib/models';
+import { isValidModel, DEFAULT_MODEL, DEFAULT_BASE_URL, type EditSessionData, type AvailableModel } from '@/lib/models';
 
 interface AppConfig {
   baseUrl: string;
@@ -346,8 +346,8 @@ export default function Home() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div className={activeTab === 'generation' ? 'block' : 'hidden'}>
           <GenerationsTab
-            defaultModel={config?.defaultGenerationsModel || 'gpt-image-2.5'}
-            baseUrl={config?.baseUrl || 'https://api.openai.com/v1'}
+            defaultModel={config?.defaultGenerationsModel || DEFAULT_MODEL}
+            baseUrl={config?.baseUrl || DEFAULT_BASE_URL}
             isConfigured={Boolean(config?.isConfigured)}
             onSuccess={handleSuccess}
             presetPrompt={presetPrompt}
@@ -361,8 +361,8 @@ export default function Home() {
 
         <div className={activeTab === 'edit' ? 'block' : 'hidden'}>
           <EditsTab
-            defaultModel={config?.defaultEditsModel || 'gpt-image-2.5'}
-            baseUrl={config?.baseUrl || 'https://api.openai.com/v1'}
+            defaultModel={config?.defaultEditsModel || DEFAULT_MODEL}
+            baseUrl={config?.baseUrl || DEFAULT_BASE_URL}
             isConfigured={Boolean(config?.isConfigured)}
             onSuccess={handleSuccess}
             presetPrompt={presetPrompt}

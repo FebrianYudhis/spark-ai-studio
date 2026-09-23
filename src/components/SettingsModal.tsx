@@ -31,7 +31,7 @@ import {
   Inbox,
 } from 'lucide-react';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
-import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
+import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, DEFAULT_BASE_URL, DEFAULT_ENHANCER_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
 
 export interface AppConfigData {
   baseUrl: string;
@@ -87,16 +87,16 @@ export default function SettingsModal({
   const [loadingShares, setLoadingShares] = useState(false);
 
   // Image Studio Settings State
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
   const [token, setToken] = useState('');
   const [generationsModel, setGenerationsModel] = useState<AvailableModel>(DEFAULT_MODEL);
   const [editsModel, setEditsModel] = useState<AvailableModel>(DEFAULT_MODEL);
   const [showToken, setShowToken] = useState(false);
 
   // Prompt Enhancer Settings State
-  const [enhancerBaseUrl, setEnhancerBaseUrl] = useState('https://api.openai.com/v1');
+  const [enhancerBaseUrl, setEnhancerBaseUrl] = useState(DEFAULT_BASE_URL);
   const [enhancerToken, setEnhancerToken] = useState('');
-  const [enhancerModel, setEnhancerModel] = useState('gpt-4o-mini');
+  const [enhancerModel, setEnhancerModel] = useState(DEFAULT_ENHANCER_MODEL);
   const [enhancerPrompt, setEnhancerPrompt] = useState(DEFAULT_ENHANCER_PROMPT);
   const [showEnhancerToken, setShowEnhancerToken] = useState(false);
 
@@ -223,7 +223,7 @@ export default function SettingsModal({
   useEffect(() => {
     if (isOpen) {
       if (currentConfig) {
-        setBaseUrl(currentConfig.baseUrl || 'https://api.openai.com/v1');
+        setBaseUrl(currentConfig.baseUrl || DEFAULT_BASE_URL);
         setToken(currentConfig.rawToken || '');
         setGenerationsModel(
           currentConfig.defaultGenerationsModel && isValidModel(currentConfig.defaultGenerationsModel)
@@ -235,9 +235,9 @@ export default function SettingsModal({
             ? currentConfig.defaultEditsModel
             : DEFAULT_MODEL
         );
-        setEnhancerBaseUrl(currentConfig.enhancerBaseUrl || 'https://api.openai.com/v1');
+        setEnhancerBaseUrl(currentConfig.enhancerBaseUrl || DEFAULT_BASE_URL);
         setEnhancerToken(currentConfig.enhancerToken || '');
-        setEnhancerModel(currentConfig.enhancerModel || 'gpt-4o-mini');
+        setEnhancerModel(currentConfig.enhancerModel || DEFAULT_ENHANCER_MODEL);
         setEnhancerPrompt(
           currentConfig.enhancerPrompt !== undefined && currentConfig.enhancerPrompt !== null
             ? currentConfig.enhancerPrompt
@@ -251,7 +251,7 @@ export default function SettingsModal({
           .then((res) => res.json())
           .then((data) => {
             if (data) {
-        setBaseUrl(data.baseUrl || 'https://api.openai.com/v1');
+        setBaseUrl(data.baseUrl || DEFAULT_BASE_URL);
         setToken('');
         setGenerationsModel(
                 data.defaultGenerationsModel && isValidModel(data.defaultGenerationsModel)
@@ -263,9 +263,9 @@ export default function SettingsModal({
                   ? data.defaultEditsModel
                   : DEFAULT_MODEL
               );
-              setEnhancerBaseUrl(data.enhancerBaseUrl || 'https://api.openai.com/v1');
+              setEnhancerBaseUrl(data.enhancerBaseUrl || DEFAULT_BASE_URL);
                setEnhancerToken(data.maskedEnhancerToken || '');
-              setEnhancerModel(data.enhancerModel || 'gpt-4o-mini');
+              setEnhancerModel(data.enhancerModel || DEFAULT_ENHANCER_MODEL);
               setEnhancerPrompt(
                 data.enhancerPrompt !== undefined && data.enhancerPrompt !== null
                   ? data.enhancerPrompt
@@ -761,7 +761,7 @@ export default function SettingsModal({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setBaseUrl('https://api.openai.com/v1')}
+                    onClick={() => setBaseUrl(DEFAULT_BASE_URL)}
                     className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium hover:underline cursor-pointer"
                   >
                     Reset ke Default OpenAI
@@ -901,7 +901,7 @@ export default function SettingsModal({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setEnhancerBaseUrl('https://api.openai.com/v1')}
+                    onClick={() => setEnhancerBaseUrl(DEFAULT_BASE_URL)}
                     className="text-[11px] text-purple-600 hover:text-purple-800 font-medium hover:underline cursor-pointer"
                   >
                     Reset ke Default OpenAI
@@ -970,7 +970,7 @@ export default function SettingsModal({
                     <span className="text-slate-400">Pilihan cepat:</span>
                     <button
                       type="button"
-                      onClick={() => setEnhancerModel('gpt-4o-mini')}
+                      onClick={() => setEnhancerModel(DEFAULT_ENHANCER_MODEL)}
                       className="px-1.5 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[10px] font-mono font-medium transition-colors cursor-pointer"
                     >
                       gpt-4o-mini

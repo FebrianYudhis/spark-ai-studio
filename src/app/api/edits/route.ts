@@ -3,8 +3,9 @@ import { saveApiHit, getUserSettings } from '@/lib/db';
 import { saveUploadedFile, saveRemoteOrBase64Image, extractImageStrings } from '@/lib/storage';
 import { parseAndSanitizeApiResponse } from '@/lib/responseCleaner';
 import { sanitizeResponsePayloadAfterSave } from '@/lib/payloadSanitizer';
-import { validateImageSize, validateImageQuality, validateInputFidelity } from '@/lib/models';
+import { validateImageSize, validateImageQuality, validateInputFidelity, DEFAULT_MODEL, DEFAULT_BASE_URL } from '@/lib/models';
 import { getAuthUser } from '@/lib/auth';
+import { isTokenConfigured, NO_CACHE_HEADERS } from '@/lib/utils';
 import path from 'node:path';
 
 export const dynamic = 'force-dynamic';
@@ -14,14 +15,24 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json(
       { error: 'Harap login terlebih dahulu untuk mengedit gambar.' },
-      { status: 401 }
+      { status: 401, headers: NO_CACHE_HEADERS }
     );
   }
 
   const settings = getUserSettings(user.id);
-  const baseUrl = settings.base_url || 'https://api.openai.com/v1';
+  const baseUrl = settings.base_url || DEFAULT_BASE_URL;
   const token = settings.api_token || '';
-  const defaultModel = settings.edits_model || 'gpt-image-2.5';
+  const defaultModel = settings.edits_model || DEFAULT_MODEL;
+
+  if (!isTokenConfigured(token)) {
+    return NextResponse.json(
+      {
+        error:
+          'API Token belum diatur. Silakan buka menu Pengaturan (Settings) -> tab "Image" dan masukkan API Token Anda.',
+      },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
+  }
 
   let formData: FormData;
   try {
@@ -29,7 +40,7 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     return NextResponse.json(
       { error: 'Gagal memproses form data: ' + (err instanceof Error ? err.message : String(err)) },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -42,7 +53,7 @@ export async function POST(req: NextRequest) {
   const rawFidelity = (formData.get('input_fidelity') as string)?.trim() || (formData.get('inputFidelity') as string)?.trim() || 'high';
 
   if (!prompt) {
-    return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400 });
+    return NextResponse.json({ error: 'Prompt wajib diisi' }, { status: 400, headers: NO_CACHE_HEADERS });
   }
 
   // Validasi ukuran gambar sesuai spesifikasi OpenAI Images
@@ -50,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (!sizeValidation.valid) {
     return NextResponse.json(
       { error: sizeValidation.error || 'Ukuran gambar tidak valid' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -59,7 +70,7 @@ export async function POST(req: NextRequest) {
   if (!qualityValidation.valid) {
     return NextResponse.json(
       { error: qualityValidation.error || 'Kualitas gambar tidak valid' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -68,7 +79,7 @@ export async function POST(req: NextRequest) {
   if (!fidelityValidation.valid) {
     return NextResponse.json(
       { error: fidelityValidation.error || 'Nilai input_fidelity tidak valid' },
-      { status: 400 }
+      { status: 400, headers: NO_CACHE_HEADERS }
     );
   }
   const inputFidelity = fidelityValidation.value;
@@ -94,7 +105,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!primaryFile || !(primaryFile instanceof Blob) || primaryFile.size === 0) {
-    return NextResponse.json({ error: 'File gambar dasar (image 1) wajib diunggah' }, { status: 400 });
+    return NextResponse.json({ error: 'File gambar dasar (image 1) wajib diunggah' }, { status: 400, headers: NO_CACHE_HEADERS });
   }
 
   const targetUrl = `${baseUrl.replace(/\/+$/, '')}/images/edits`;
@@ -111,7 +122,7 @@ export async function POST(req: NextRequest) {
     console.error('[edits] Failed to save uploaded files to local disk:', saveErr);
     return NextResponse.json(
       { error: 'Gagal menyimpan file gambar ke disk server: ' + (saveErr instanceof Error ? saveErr.message : String(saveErr)) },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 
@@ -254,9 +265,9 @@ export async function POST(req: NextRequest) {
       sourceImageUrl: savedPrimary.url,
       resultImageUrl: primaryResultImageUrl,
       resultImageUrls: savedResultUrls,
-      response: responseData,
+      response: sanitizedResponseData,
       errorMessage,
-    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400) });
+    }, { status: isSuccess ? 200 : (statusCode >= 400 ? statusCode : 400), headers: NO_CACHE_HEADERS });
 
   } catch (err: unknown) {
     let message = err instanceof Error ? err.message : String(err);
@@ -288,6 +299,6 @@ export async function POST(req: NextRequest) {
       sourceImageUrls: allSavedSources.map((s) => s.url),
       sourceImageUrl: savedPrimary.url,
       errorMessage: message,
-    }, { status: 500 });
+    }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

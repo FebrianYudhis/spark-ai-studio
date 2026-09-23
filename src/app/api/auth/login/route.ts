@@ -4,11 +4,12 @@ import { getUserByUsername, createSession } from '@/lib/db';
 import { applyRetentionPolicy } from '@/lib/retention';
 import { verifyPassword, generateSessionId, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS, isRequestSecure } from '@/lib/auth';
 import { getClientIp, checkRateLimit, recordFailedAttempt, resetRateLimit } from '@/lib/rateLimiter';
+import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
-    const ipKey = `login:ip:${clientIp}`;
+    const ipKey = clientIp ? `login:ip:${clientIp}` : null;
 
     // 1. Cek rate limit berdasarkan IP (maksimal 5 percobaan gagal per 5 menit)
     const ipLimit = checkRateLimit(ipKey, 5, 5 * 60 * 1000);
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
         },
         {
           status: 429,
-          headers: { 'Retry-After': String(ipLimit.retryAfterSeconds ?? 60) },
+          headers: { ...NO_CACHE_HEADERS, 'Retry-After': String(ipLimit.retryAfterSeconds ?? 60) },
         }
       );
     }
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     if (!username || !password) {
       return NextResponse.json(
         { error: 'Username dan password wajib diisi.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
         },
         {
           status: 429,
-          headers: { 'Retry-After': String(userLimit.retryAfterSeconds ?? 60) },
+          headers: { ...NO_CACHE_HEADERS, 'Retry-After': String(userLimit.retryAfterSeconds ?? 60) },
         }
       );
     }
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       recordFailedAttempt(userKey);
       return NextResponse.json(
         { error: 'Username atau password salah.' },
-        { status: 401 }
+        { status: 401, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
       recordFailedAttempt(userKey);
       return NextResponse.json(
         { error: 'Username atau password salah.' },
-        { status: 401 }
+        { status: 401, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -102,12 +103,12 @@ export async function POST(req: Request) {
         display_name: user.display_name,
         created_at: user.created_at,
       },
-    });
+    }, { headers: NO_CACHE_HEADERS });
   } catch (err: unknown) {
     console.error('[auth/login] error:', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Gagal memproses login.' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

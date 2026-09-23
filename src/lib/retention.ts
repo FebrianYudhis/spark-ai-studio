@@ -2,21 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getDb, getUserSettings, getAllActiveImageUrls } from './db';
 import { deletePhysicalFile } from './storage';
+import { parseUrls } from './utils';
 
 export interface RetentionResult {
   deletedHits: number;
   freedBytes: number;
   deletedFiles: string[];
   message: string;
-}
-
-function parseUrls(urlData: string | null | undefined): string[] {
-  if (!urlData) return [];
-  try {
-    const parsed = JSON.parse(urlData);
-    if (Array.isArray(parsed)) return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
-  } catch {}
-  return [urlData].filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
 }
 
 /**
