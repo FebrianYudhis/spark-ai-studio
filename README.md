@@ -12,9 +12,11 @@ Dilengkapi dengan penyimpanan SQLite lokal berkinerja tinggi, isolasi multi-peng
 - **✨ AI Prompt Enhancer**: Bantuan AI bawaan untuk menyempurnakan dan memperkaya deskripsi visual prompt sebelum dieksekusi.
 - **🔐 Multi-User & Isolasi Data**: Sistem autentikasi mandiri (login/register) dengan isolasi penuh pada pengaturan API Token, Base URL, dan riwayat per pengguna.
 - **🗃️ Riwayat API Interaktif**: Pencatatan otomatis setiap hit API ke database SQLite lokal lengkap dengan paginasi, inspeksi detail payload/respons, pemulihan sesi (chain editing), serta ekspor riwayat ke format JSON.
+- **🔎 Inspeksi Detail Error**: Modal khusus pada tab Generation & Edit untuk menelusuri status HTTP, endpoint, payload request, dan respons mentah (JSON/HTML) saat request gagal.
+- **🤝 Berbagi Konfigurasi Antar Pengguna**: Kirim snapshot pengaturan ke username lain dengan alur pending/accept/reject, dilindungi rate limit per-user dan per-IP.
 - **🧹 Manajemen Penyimpanan Cerdas**: Pemantauan kapasitas disk, pembersihan file *orphaned* 1-klik dengan masa tenggang (*grace period*), serta kebijakan retensi otomatis (*auto-retention*).
-- **📱 PWA & Desain Responsif**: Pengalaman layaknya aplikasi native yang dapat diinstal langsung di desktop maupun ponsel, ramah layar sentuh, dan layout modal adaptif (`dvh`).
-- **⚙️ Konfigurasi Mudah via UI**: Seluruh setelan endpoint, token API, dan preferensi model dapat diubah langsung melalui modal antarmuka tanpa perlu restart server.
+- **📱 PWA & Desain Responsif**: Pengalaman layaknya aplikasi native yang dapat diinstal langsung di desktop maupun ponsel, dengan panduan instalasi per platform (Android/iPhone/Komputer), ramah layar sentuh, dan layout modal adaptif (`dvh`).
+- **⚙️ Konfigurasi Mudah via UI**: Seluruh setelan endpoint, token API, dan preferensi model dapat diubah langsung melalui modal antarmuka tanpa perlu restart server. Konfigurasi default akun baru dapat di-seed melalui `.env`.
 
 ---
 
@@ -60,10 +62,11 @@ npm run start
 
 ## ⚙️ Konfigurasi Awal
 
-1. Buat akun pertama Anda melalui antarmuka **Daftar Akun Baru**.
-2. Masuk ke aplikasi dan buka menu **Pengaturan** di sudut kanan atas navbar.
-3. Masukkan **Base URL** (default: `https://api.openai.com/v1`) dan **API Token** Anda.
-4. Pilih model bawaan yang ingin digunakan, lalu klik **Simpan Pengaturan**. Konfigurasi langsung tersimpan dan aktif seketika.
+1. (Opsional) Salin `.env.example` menjadi `.env` untuk menyetel konfigurasi default akun baru (`AI_*`), `TRUST_PROXY`, `EXPOSE_ERROR_DETAILS`, dan `NEXT_PUBLIC_APP_TIMEZONE`.
+2. Buat akun pertama Anda melalui antarmuka **Daftar Akun Baru**.
+3. Masuk ke aplikasi dan buka menu **Pengaturan** di sudut kanan atas navbar.
+4. Masukkan **Base URL** (default: `https://api.openai.com/v1`) dan **API Token** Anda.
+5. Pilih model bawaan yang ingin digunakan, lalu klik **Simpan Pengaturan**. Konfigurasi langsung tersimpan dan aktif seketika.
 
 ---
 
@@ -78,7 +81,7 @@ spark-ai-studio/
 ├── src/
 │   ├── app/               # Next.js App Router (Halaman & Endpoint API)
 │   ├── components/        # Komponen antarmuka (Auth, Tabs, Modals, Navbar)
-│   └── lib/               # Database helper, auth, retention, storage & sanitasi
+│   └── lib/               # Database helper, auth, retention, storage, utils & sanitasi
 └── package.json
 ```
 
