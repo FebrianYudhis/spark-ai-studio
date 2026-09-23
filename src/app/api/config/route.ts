@@ -23,41 +23,6 @@ export async function GET(req: NextRequest) {
   const token = settings.api_token || '';
   const enhancerToken = settings.enhancer_api_token || '';
 
-  const { searchParams } = new URL(req.url);
-  const isExport = searchParams.get('export') === 'download' || searchParams.get('export') === 'true';
-
-  if (isExport) {
-    const exportData = {
-      app: 'spark-ai-studio',
-      type: 'settings_export',
-      version: 1,
-      user: { id: user.id, username: user.username },
-      exported_at: new Date().toISOString(),
-      settings: {
-        base_url: settings.base_url,
-        api_token: settings.api_token,
-        generations_model: settings.generations_model,
-        edits_model: settings.edits_model,
-        enhancer_base_url: settings.enhancer_base_url,
-        enhancer_api_token: settings.enhancer_api_token,
-        enhancer_model: settings.enhancer_model,
-        enhancer_prompt: settings.enhancer_prompt,
-        retention_days: settings.retention_days ?? 0,
-        retention_max_items: settings.retention_max_items ?? 0,
-      },
-    };
-    const userPrefix = `${user.username}_`;
-    const filename = `spark_ai_studio_settings_${userPrefix}${new Date().toISOString().slice(0, 10)}.json`;
-    return new NextResponse(JSON.stringify(exportData, null, 2), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Cache-Control': 'no-store',
-      },
-    });
-  }
-
   const isConfigured = Boolean(
     token &&
     token !== 'your_api_token_here' &&
@@ -76,6 +41,41 @@ export async function GET(req: NextRequest) {
     ? (enhancerToken.length > 8 ? `${enhancerToken.slice(0, 4)}...${enhancerToken.slice(-4)}` : '••••••••')
     : 'Belum diatur';
 
+  const { searchParams } = new URL(req.url);
+  const isExport = searchParams.get('export') === 'download' || searchParams.get('export') === 'true';
+
+  if (isExport) {
+    const exportData = {
+      app: 'spark-ai-studio',
+      type: 'settings_export',
+      version: 1,
+      user: { id: user.id, username: user.username },
+      exported_at: new Date().toISOString(),
+      settings: {
+        base_url: settings.base_url,
+        maskedToken,
+        generations_model: settings.generations_model,
+        edits_model: settings.edits_model,
+        enhancer_base_url: settings.enhancer_base_url,
+        maskedEnhancerToken,
+        enhancer_model: settings.enhancer_model,
+        enhancer_prompt: settings.enhancer_prompt,
+        retention_days: settings.retention_days ?? 0,
+        retention_max_items: settings.retention_max_items ?? 0,
+      },
+    };
+    const userPrefix = `${user.username}_`;
+    const filename = `spark_ai_studio_settings_${userPrefix}${new Date().toISOString().slice(0, 10)}.json`;
+    return new NextResponse(JSON.stringify(exportData, null, 2), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
   return NextResponse.json(
     {
       // Image Studio Settings
@@ -87,9 +87,7 @@ export async function GET(req: NextRequest) {
 
       // Prompt Enhancer Settings
       enhancerBaseUrl: settings.enhancer_base_url,
-      enhancerToken: enhancerToken,
       isEnhancerConfigured,
-      maskedEnhancerToken,
       enhancerModel: settings.enhancer_model,
       enhancerPrompt: settings.enhancer_prompt,
 
@@ -158,9 +156,6 @@ export async function POST(req: NextRequest) {
       updated.enhancer_api_token !== 'your_api_token_here' &&
       !updated.enhancer_api_token.includes('dummy')
     );
-    const maskedEnhancerToken = isEnhancerConfigured
-      ? (updated.enhancer_api_token.length > 8 ? `${updated.enhancer_api_token.slice(0, 4)}...${updated.enhancer_api_token.slice(-4)}` : '••••••••')
-      : 'Belum diatur';
 
     return NextResponse.json(
       {
@@ -174,9 +169,7 @@ export async function POST(req: NextRequest) {
           defaultEditsModel: updated.edits_model,
 
           enhancerBaseUrl: updated.enhancer_base_url,
-          enhancerToken: updated.enhancer_api_token,
           isEnhancerConfigured,
-          maskedEnhancerToken,
           enhancerModel: updated.enhancer_model,
           enhancerPrompt: updated.enhancer_prompt,
 

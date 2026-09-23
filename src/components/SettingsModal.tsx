@@ -478,8 +478,8 @@ export default function SettingsModal({
       const importedBaseUrl = typeof (settingsData.base_url ?? settingsData.baseUrl) === 'string'
         ? String(settingsData.base_url ?? settingsData.baseUrl).trim()
         : baseUrl;
-      const importedToken = typeof (settingsData.api_token ?? settingsData.token ?? settingsData.rawToken) === 'string'
-        ? String(settingsData.api_token ?? settingsData.token ?? settingsData.rawToken).trim()
+      const importedToken = typeof (settingsData.maskedToken ?? settingsData.maskedToken) === 'string'
+        ? String(settingsData.maskedToken ?? settingsData.maskedToken).trim()
         : token;
       const importedGenModel = typeof (settingsData.generations_model ?? settingsData.generationsModel) === 'string'
         ? String(settingsData.generations_model ?? settingsData.generationsModel).trim()
@@ -490,8 +490,8 @@ export default function SettingsModal({
       const importedEnhancerBaseUrl = typeof (settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl) === 'string'
         ? String(settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl).trim()
         : enhancerBaseUrl;
-      const importedEnhancerToken = typeof (settingsData.enhancer_api_token ?? settingsData.enhancerToken) === 'string'
-        ? String(settingsData.enhancer_api_token ?? settingsData.enhancerToken).trim()
+      const importedEnhancerToken = typeof (settingsData.maskedEnhancerToken) === 'string'
+        ? String(settingsData.maskedEnhancerToken).trim()
         : enhancerToken;
       const importedEnhancerModel = typeof (settingsData.enhancer_model ?? settingsData.enhancerModel) === 'string'
         ? String(settingsData.enhancer_model ?? settingsData.enhancerModel).trim()
