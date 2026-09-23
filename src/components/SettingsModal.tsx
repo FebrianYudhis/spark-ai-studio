@@ -79,7 +79,7 @@ export default function SettingsModal({
   onUserProfileUpdated,
   onLogout,
   onForceLogout,
-  initialTab = 'image',
+  initialTab = 'profile',
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<'image' | 'enhancer' | 'profile' | 'storage' | 'share'>(initialTab);
   const [shareTarget, setShareTarget] = useState('');
@@ -660,7 +660,7 @@ export default function SettingsModal({
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                Pengaturan API AI
+                Pengaturan
               </h2>
             </div>
           </div>
@@ -677,6 +677,18 @@ export default function SettingsModal({
         <div className="px-4 sm:px-6 pt-2 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto shrink-0">
           <button
             type="button"
+            onClick={() => setActiveTab('profile')}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'profile'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <User className="w-4 h-4 text-indigo-600" />
+            <span>Profil</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('image')}
             className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'image'
@@ -684,8 +696,8 @@ export default function SettingsModal({
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <ImageIcon className="w-4 h-4" />
-            <span>Image</span>
+            <ImageIcon className="w-4 h-4 text-blue-600" />
+            <span>Gambar</span>
           </button>
           <button
             type="button"
@@ -697,34 +709,7 @@ export default function SettingsModal({
             }`}
           >
             <Wand2 className="w-4 h-4 text-purple-600" />
-            <span>Enhancer</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('profile')}
-            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'profile'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <User className="w-4 h-4 text-indigo-600" />
-            <span>Profile</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('storage');
-              fetchStorageStats();
-            }}
-            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'storage'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <HardDrive className="w-4 h-4 text-emerald-600" />
-            <span>Penyimpanan</span>
+            <span>Penyempurna</span>
           </button>
           <button
             type="button"
@@ -740,6 +725,21 @@ export default function SettingsModal({
           >
             <Share2 className="w-4 h-4 text-indigo-600" />
             <span>I/E Konfigurasi</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('storage');
+              fetchStorageStats();
+            }}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'storage'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <HardDrive className="w-4 h-4 text-emerald-600" />
+            <span>Penyimpanan</span>
           </button>
         </div>
 
@@ -1519,7 +1519,7 @@ export default function SettingsModal({
           {/* Footer / Action Buttons (Pinned at Bottom) */}
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
             {/* Right: Action Buttons */}
-            {activeTab === 'profile' ? (
+            {activeTab === 'profile' || activeTab === 'share' ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"

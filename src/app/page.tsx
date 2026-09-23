@@ -35,7 +35,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'generation' | 'edit' | 'history'>('generation');
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'image' | 'enhancer' | 'profile' | 'storage'>('image');
+  const [settingsTab, setSettingsTab] = useState<'image' | 'enhancer' | 'profile' | 'storage'>('profile');
   const [historyCount, setHistoryCount] = useState(0);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -204,7 +204,7 @@ export default function Home() {
     showToast('Sesi berakhir. Silakan login kembali.', 'info');
   }, []);
 
-  const handleOpenSettings = (tab: 'image' | 'enhancer' | 'profile' | 'storage' = 'image') => {
+  const handleOpenSettings = (tab: 'image' | 'enhancer' | 'profile' | 'storage' = 'profile') => {
     setSettingsTab(tab);
     setIsSettingsOpen(true);
   };
