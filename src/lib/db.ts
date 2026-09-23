@@ -33,24 +33,30 @@ function ensureDbDir() {
 }
 ensureDbDir();
 
-let dbInstance: DatabaseSync | null = null;
+// Simpan koneksi di globalThis agar Next.js dev (HMR) tidak membuka koneksi baru tiap reload modul.
+const globalForDb = globalThis as unknown as { __sparkDbInstance?: DatabaseSync | null };
+
+/** Escape wildcard LIKE (%, _, \) agar diperlakukan sebagai karakter literal. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
 
 export function getDb(): DatabaseSync {
   ensureDbDir();
 
   // Jika koneksi sudah ada tetapi file DB dihapus dari disk, reset koneksi
-  if (dbInstance && !fs.existsSync(DB_PATH)) {
+  if (globalForDb.__sparkDbInstance && !fs.existsSync(DB_PATH)) {
     try {
-      dbInstance.close();
+      globalForDb.__sparkDbInstance.close();
     } catch {}
-    dbInstance = null;
+    globalForDb.__sparkDbInstance = null;
   }
 
-  if (!dbInstance) {
-    dbInstance = new DatabaseSync(DB_PATH);
-    initSchema(dbInstance);
+  if (!globalForDb.__sparkDbInstance) {
+    globalForDb.__sparkDbInstance = new DatabaseSync(DB_PATH);
+    initSchema(globalForDb.__sparkDbInstance);
   }
-  return dbInstance;
+  return globalForDb.__sparkDbInstance;
 }
 
 function initSchema(db: DatabaseSync) {
@@ -336,8 +342,8 @@ export function getApiHits(options?: {
   }
 
   if (search) {
-    conditions.push(`(prompt LIKE ? OR model LIKE ? OR source_image_name LIKE ?)`);
-    const searchPattern = `%${search}%`;
+    conditions.push(`(prompt LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR source_image_name LIKE ? ESCAPE '\\')`);
+    const searchPattern = `%${escapeLikePattern(search)}%`;
     params.push(searchPattern, searchPattern, searchPattern);
   }
 
@@ -420,8 +426,8 @@ export function getApiHitsCount(type?: string, search?: string, userId?: number 
   }
 
   if (search && search.trim()) {
-    conditions.push(`(prompt LIKE ? OR model LIKE ? OR source_image_name LIKE ?)`);
-    const searchPattern = `%${search.trim()}%`;
+    conditions.push(`(prompt LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR source_image_name LIKE ? ESCAPE '\\')`);
+    const searchPattern = `%${escapeLikePattern(search.trim())}%`;
     params.push(searchPattern, searchPattern, searchPattern);
   }
 

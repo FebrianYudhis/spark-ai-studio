@@ -6,6 +6,9 @@ import { parseUrls, NO_CACHE_HEADERS, toClientErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
+/** Batas total data base64 yang disematkan ke satu berkas ekspor (50 MB). */
+const MAX_EXPORT_BYTES = 50 * 1024 * 1024;
+
 /**
  * Membersihkan payload JSON dari duplikasi string Base64 yang sangat panjang.
  * Data Base64 gambar asli sudah secara rapi diekspor di bagian 'images' (sumber)
@@ -66,10 +69,16 @@ export async function GET(request: NextRequest) {
     // 1. Ekstrak dan konversi source images ke Base64 (image 1, image 2, dst.)
     const sourceUrls = parseUrls(record.source_image_url);
     const sourceImagesBase64: Record<string, string> = {};
+    let embeddedBytes = 0;
     for (let i = 0; i < sourceUrls.length; i++) {
       const b64 = await convertImageToBase64DataUrl(sourceUrls[i]);
       if (b64) {
-        sourceImagesBase64[`image ${i + 1}`] = b64;
+        if (embeddedBytes + b64.length <= MAX_EXPORT_BYTES) {
+          sourceImagesBase64[`image ${i + 1}`] = b64;
+          embeddedBytes += b64.length;
+        } else {
+          sourceImagesBase64[`image ${i + 1}`] = `[Ukuran ekspor melebihi batas ${Math.round(MAX_EXPORT_BYTES / 1024 / 1024)} MB; berkas tersedia di: ${sourceUrls[i]}]`;
+        }
       }
     }
 
@@ -80,7 +89,12 @@ export async function GET(request: NextRequest) {
       const b64 = await convertImageToBase64DataUrl(resultUrls[i]);
       if (b64) {
         const key = resultUrls.length === 1 ? 'result_image' : `result_image ${i + 1}`;
-        resultImagesBase64[key] = b64;
+        if (embeddedBytes + b64.length <= MAX_EXPORT_BYTES) {
+          resultImagesBase64[key] = b64;
+          embeddedBytes += b64.length;
+        } else {
+          resultImagesBase64[key] = `[Ukuran ekspor melebihi batas ${Math.round(MAX_EXPORT_BYTES / 1024 / 1024)} MB; berkas tersedia di: ${resultUrls[i]}]`;
+        }
       }
     }
 

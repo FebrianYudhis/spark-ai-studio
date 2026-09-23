@@ -14,6 +14,21 @@ export function ensureUploadsDir() {
 }
 ensureUploadsDir();
 
+const UPLOAD_MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+};
+
+// Ekstensi raster yang boleh diunggah meski magic bytes belum dikenali (mis. AVIF/HEIC).
+const RASTER_UPLOAD_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif']);
+
 export async function saveUploadedFile(file: File, prefix: string = 'edit'): Promise<{
   filename: string;
   size: number;
@@ -24,10 +39,26 @@ export async function saveUploadedFile(file: File, prefix: string = 'edit'): Pro
   ensureUploadsDir();
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-  
+
+  // Validasi konten: tolak file non-gambar (mis. .html/.svg) agar tidak tersaji sebagai konten web.
+  const magic = isValidImageBuffer(buffer);
+  const rawExt = path.extname(file.name).toLowerCase().replace('.', '');
+  let ext: string;
+  if (magic.valid) {
+    ext = magic.ext;
+  } else if (
+    RASTER_UPLOAD_EXTENSIONS.has(rawExt) &&
+    (!file.type || file.type.startsWith('image/'))
+  ) {
+    ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+  } else {
+    throw new Error('File yang diunggah bukan gambar yang didukung.');
+  }
+
   const timestamp = Date.now();
   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const filename = `${prefix}_${timestamp}_${safeName}`;
+  const baseName = path.basename(safeName, path.extname(safeName)) || 'image';
+  const filename = `${prefix}_${timestamp}_${baseName}.${ext}`;
   const filePath = path.join(UPLOAD_DIR, filename);
 
   fs.writeFileSync(filePath, buffer);
@@ -37,7 +68,7 @@ export async function saveUploadedFile(file: File, prefix: string = 'edit'): Pro
     size: buffer.length,
     url: `/uploads/${filename}`,
     buffer,
-    fileType: file.type || 'image/png',
+    fileType: UPLOAD_MIME_BY_EXT[ext] || 'image/png',
   };
 }
 

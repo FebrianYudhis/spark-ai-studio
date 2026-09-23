@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { History, Sparkles, Scissors, Trash2, RefreshCw, Search, AlertCircle, Download, Copy, Check, MessageSquare, Image as ImageIcon, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreVertical } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import DetailModal from './DetailModal';
@@ -42,6 +42,13 @@ export default function HistoryTab({
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   // Menutup menu aksi riwayat saat klik di luar area menu
   useEffect(() => {
@@ -93,7 +100,8 @@ export default function HistoryTab({
     if (success) {
       setCopiedId(id);
       showToast('Prompt berhasil disalin ke clipboard!', 'success');
-      setTimeout(() => setCopiedId(null), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
     } else {
       showError('Gagal Menyalin', 'Tidak dapat menyalin ke clipboard. Silakan salin teks secara manual.');
     }

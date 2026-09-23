@@ -77,9 +77,10 @@ export function checkRateLimit(
 }
 
 /**
- * Mencatat percobaan gagal
+ * Mencatat satu percobaan untuk key (selalu menambah hitungan, terlepas dari
+ * berhasil/gagal). Dipakai untuk membatasi jumlah permintaan, bukan hanya kegagalan.
  */
-export function recordFailedAttempt(
+export function recordAttempt(
   key: string | null,
   maxAttempts: number = 5,
   windowMs: number = 5 * 60 * 1000,
@@ -121,6 +122,18 @@ export function recordFailedAttempt(
     allowed: true,
     remainingAttempts: Math.max(0, maxAttempts - record.attempts),
   };
+}
+
+/**
+ * Mencatat percobaan gagal
+ */
+export function recordFailedAttempt(
+  key: string | null,
+  maxAttempts: number = 5,
+  windowMs: number = 5 * 60 * 1000,
+  blockDurationMs: number = 5 * 60 * 1000
+): RateLimitStatus {
+  return recordAttempt(key, maxAttempts, windowMs, blockDurationMs);
 }
 
 /**

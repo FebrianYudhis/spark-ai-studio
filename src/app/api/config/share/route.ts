@@ -5,7 +5,7 @@ import {
   createConfigShare, getPendingConfigShares,
   acceptConfigShare, rejectConfigShare, deleteConfigShare,
 } from '@/lib/db';
-import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rateLimiter';
+import { checkRateLimit, recordAttempt, getClientIp } from '@/lib/rateLimiter';
 import { NO_CACHE_HEADERS } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -62,12 +62,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Catat setiap permintaan (valid maupun tidak) agar kuota benar-benar berlaku
+  recordAttempt(shareKey, 10, 5 * 60 * 1000);
+  recordAttempt(ipKey, 20, 5 * 60 * 1000);
+
   const body = await req.json().catch(() => ({}));
   const toUsername = (body.toUsername || body.to_username || '').trim();
 
   if (!toUsername || !/^[a-zA-Z0-9_-]+$/.test(toUsername)) {
-    recordFailedAttempt(shareKey, 10, 5 * 60 * 1000);
-    recordFailedAttempt(ipKey, 20, 5 * 60 * 1000);
     return NextResponse.json({ error: 'Username tujuan tidak valid.' }, { status: 400, headers: NO_CACHE_HEADERS });
   }
 
@@ -77,9 +79,8 @@ export async function POST(req: NextRequest) {
 
   const target = getUserByUsername(toUsername);
   if (!target) {
-    recordFailedAttempt(shareKey, 10, 5 * 60 * 1000);
-    recordFailedAttempt(ipKey, 20, 5 * 60 * 1000);
-    return NextResponse.json({ error: 'Pengguna tujuan tidak ditemukan.' }, { status: 404, headers: NO_CACHE_HEADERS });
+    // Pesan generik: jangan bedakan antara username tidak ada dan target tidak valid (cegah enumerasi).
+    return NextResponse.json({ error: 'Permintaan tidak dapat diproses. Periksa kembali username tujuan.' }, { status: 400, headers: NO_CACHE_HEADERS });
   }
 
   const settings = getUserSettings(user.id);

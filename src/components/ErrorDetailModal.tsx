@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
@@ -41,10 +41,24 @@ export default function ErrorDetailModal({
   const [copiedResponse, setCopiedResponse] = useState(false);
   const [copiedPayload, setCopiedPayload] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const copyTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      copyTimersRef.current.forEach(clearTimeout);
+      copyTimersRef.current = [];
+    };
+  }, []);
+
+  /** Reset label "tersalin" setelah 2 detik; timer dibersihkan saat unmount. */
+  const scheduleCopyReset = (reset: () => void) => {
+    const timer = setTimeout(reset, 2000);
+    copyTimersRef.current.push(timer);
+  };
 
   // Tangani tombol Escape untuk menutup modal
   useEffect(() => {
@@ -110,10 +124,10 @@ export default function ErrorDetailModal({
     if (success) {
       if (type === 'response') {
         setCopiedResponse(true);
-        setTimeout(() => setCopiedResponse(false), 2000);
+        scheduleCopyReset(() => setCopiedResponse(false));
       } else {
         setCopiedPayload(true);
-        setTimeout(() => setCopiedPayload(false), 2000);
+        scheduleCopyReset(() => setCopiedPayload(false));
       }
       showToast(`${type === 'response' ? 'Respons' : 'Payload'} berhasil disalin ke clipboard!`, 'success');
     }

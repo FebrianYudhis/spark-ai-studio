@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Copy, Check, Download, FileText, AlertCircle, MessageSquare, RefreshCw } from 'lucide-react';
 import type { ApiHitRecord } from '@/lib/db';
 import { showToast, showError } from '@/lib/swal';
@@ -26,6 +26,20 @@ export default function DetailModal({
   const [localResultImageUrl, setLocalResultImageUrl] = useState<string | null>(null);
   const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  const copyTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    return () => {
+      copyTimersRef.current.forEach(clearTimeout);
+      copyTimersRef.current = [];
+    };
+  }, []);
+
+  /** Reset label "tersalin" setelah 2 detik; timer dibersihkan saat unmount. */
+  const scheduleCopyReset = (reset: () => void) => {
+    const timer = setTimeout(reset, 2000);
+    copyTimersRef.current.push(timer);
+  };
 
   // Reset cache gambar lokal saat item yang dipilih berganti
   useEffect(() => {
@@ -107,7 +121,7 @@ export default function DetailModal({
     if (success) {
       setCopiedPrompt(true);
       showToast('Prompt berhasil disalin ke clipboard!', 'success');
-      setTimeout(() => setCopiedPrompt(false), 2000);
+      scheduleCopyReset(() => setCopiedPrompt(false));
     } else {
       showError('Gagal Menyalin', 'Tidak dapat menyalin ke clipboard.');
     }
@@ -119,10 +133,10 @@ export default function DetailModal({
       showToast(`JSON ${type === 'payload' ? 'Request' : 'Response'} berhasil disalin!`, 'success');
       if (type === 'payload') {
         setCopiedPayload(true);
-        setTimeout(() => setCopiedPayload(false), 2000);
+        scheduleCopyReset(() => setCopiedPayload(false));
       } else {
         setCopiedResponse(true);
-        setTimeout(() => setCopiedResponse(false), 2000);
+        scheduleCopyReset(() => setCopiedResponse(false));
       }
     } else {
       showError('Gagal Menyalin', `Tidak dapat menyalin JSON ${type === 'payload' ? 'Request' : 'Response'}.`);
