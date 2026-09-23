@@ -121,6 +121,17 @@ function initSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_api_hits_user ON api_hits(user_id);
      CREATE INDEX IF NOT EXISTS idx_api_hits_created_at ON api_hits(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS config_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      to_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      settings_snapshot TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      responded_at DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_config_shares_to_user ON config_shares(to_user_id);
+
     CREATE TABLE IF NOT EXISTS rate_limit_attempts (
       key TEXT PRIMARY KEY,
       attempts INTEGER NOT NULL DEFAULT 1,
@@ -198,6 +209,9 @@ function initSchema(db: DatabaseSync) {
       const initialToken = process.env.AI_API_TOKEN || 'sk-proj-dummyapikey1234567890abcdef';
       const initialGenModel = process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5';
       const initialEditModel = process.env.AI_EDITS_MODEL || 'gpt-image-2.5';
+      const initialEnhancerBaseUrl = process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1';
+      const initialEnhancerToken = process.env.AI_ENHANCER_API_TOKEN || '';
+      const initialEnhancerModel = process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini';
       const now = new Date().toISOString();
       db.prepare(`
         INSERT INTO app_settings (
@@ -205,8 +219,18 @@ function initSchema(db: DatabaseSync) {
           enhancer_base_url, enhancer_api_token, enhancer_model, enhancer_prompt,
           updated_at
         )
-        VALUES (1, ?, ?, ?, ?, 'https://api.openai.com/v1', '', 'gpt-4o-mini', ?, ?)
-      `).run(initialBaseUrl, initialToken, initialGenModel, initialEditModel, DEFAULT_ENHANCER_PROMPT, now);
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        initialBaseUrl,
+        initialToken,
+        initialGenModel,
+        initialEditModel,
+        initialEnhancerBaseUrl,
+        initialEnhancerToken,
+        initialEnhancerModel,
+        DEFAULT_ENHANCER_PROMPT,
+        now
+      );
     }
   } catch {}
 
@@ -659,16 +683,17 @@ export function createUser(input: {
       updated_at
     ) VALUES (
       ?, ?, '', ?, ?,
-      ?, '', ?, ?,
+      ?, ?, ?, ?,
       ?
     )
   `).run(
     userId,
-    defaultApp.base_url || 'https://api.openai.com/v1',
-    defaultApp.generations_model || 'gpt-image-2.5',
-    defaultApp.edits_model || 'gpt-image-2.5',
-    defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
-    defaultApp.enhancer_model || 'gpt-4o-mini',
+    defaultApp.base_url || process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+    defaultApp.generations_model || process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5',
+    defaultApp.edits_model || process.env.AI_EDITS_MODEL || 'gpt-image-2.5',
+    defaultApp.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
+    defaultApp.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
+    defaultApp.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
     defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
     now
   );
@@ -813,17 +838,18 @@ export function getUserSettings(userId: number): UserSettings {
         updated_at
       ) VALUES (
         ?, ?, '', ?, ?,
-        ?, '', ?, ?,
+        ?, ?, ?, ?,
         0, 0,
         ?
       )
     `).run(
       userId,
-      defaultApp.base_url || 'https://api.openai.com/v1',
-      defaultApp.generations_model || 'gpt-image-2.5',
-      defaultApp.edits_model || 'gpt-image-2.5',
-      defaultApp.enhancer_base_url || 'https://api.openai.com/v1',
-      defaultApp.enhancer_model || 'gpt-4o-mini',
+      defaultApp.base_url || process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+      defaultApp.generations_model || process.env.AI_GENERATIONS_MODEL || 'gpt-image-2.5',
+      defaultApp.edits_model || process.env.AI_EDITS_MODEL || 'gpt-image-2.5',
+      defaultApp.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
+      defaultApp.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
+      defaultApp.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
       defaultApp.enhancer_prompt || DEFAULT_ENHANCER_PROMPT,
       now
     );
@@ -832,9 +858,9 @@ export function getUserSettings(userId: number): UserSettings {
 
   return {
     ...row,
-    enhancer_base_url: row.enhancer_base_url || 'https://api.openai.com/v1',
-    enhancer_api_token: row.enhancer_api_token || '',
-    enhancer_model: row.enhancer_model || 'gpt-4o-mini',
+    enhancer_base_url: row.enhancer_base_url || process.env.AI_ENHANCER_BASE_URL || 'https://api.openai.com/v1',
+    enhancer_api_token: row.enhancer_api_token || process.env.AI_ENHANCER_API_TOKEN || '',
+    enhancer_model: row.enhancer_model || process.env.AI_ENHANCER_MODEL || 'gpt-4o-mini',
     enhancer_prompt:
       row.enhancer_prompt && row.enhancer_prompt.trim() !== ''
         ? row.enhancer_prompt
@@ -902,3 +928,73 @@ export function updateUserSettings(userId: number, input: {
 
   return getUserSettings(userId);
 }
+
+// ==========================================
+// CONFIG SHARE (cross-user settings transfer)
+// ==========================================
+
+export interface ConfigShareRecord {
+  id: number;
+  from_user_id: number;
+  to_user_id: number;
+  settings_snapshot: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+  responded_at: string | null;
+  from_username?: string;
+}
+
+export function createConfigShare(fromUserId: number, toUserId: number, settingsSnapshot: string): number {
+  const db = getDb();
+  const info = db.prepare(
+    'INSERT INTO config_shares(from_user_id, to_user_id, settings_snapshot) VALUES (?,?,?)'
+  ).run(fromUserId, toUserId, settingsSnapshot);
+  return Number(info.lastInsertRowid);
+}
+
+export function getPendingConfigShares(toUserId: number): ConfigShareRecord[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT cs.*, u.username AS from_username
+    FROM config_shares cs
+    JOIN users u ON u.id = cs.from_user_id
+    WHERE cs.to_user_id = ? AND cs.status = 'pending'
+    ORDER BY cs.created_at DESC
+  `).all(toUserId) as unknown as ConfigShareRecord[];
+}
+
+export function acceptConfigShare(shareId: number, toUserId: number): boolean {
+  const db = getDb();
+  const share = db.prepare('SELECT settings_snapshot FROM config_shares WHERE id = ? AND to_user_id = ? AND status = ?',).get(shareId, toUserId, 'pending') as
+    | { settings_snapshot: string }
+    | undefined;
+
+  if (!share) return false;
+
+  try {
+    const parsed = JSON.parse(share.settings_snapshot);
+    updateUserSettings(toUserId, parsed);
+  } catch {
+    return false;
+  }
+
+  db.prepare(
+    'UPDATE config_shares SET status = ?, responded_at = datetime(\'now\') WHERE id = ?'
+  ).run('accepted', shareId);
+  return true;
+}
+
+export function rejectConfigShare(shareId: number, toUserId: number): boolean {
+  const db = getDb();
+  const info = db.prepare(
+    'UPDATE config_shares SET status = ?, responded_at = datetime(\'now\') WHERE id = ? AND to_user_id = ? AND status = \'pending\''
+  ).run('rejected', shareId, toUserId);
+  return Number(info.changes) > 0;
+}
+
+export function deleteConfigShare(shareId: number, userId: number): boolean {
+  const db = getDb();
+  const info = db.prepare('DELETE FROM config_shares WHERE id = ? AND from_user_id = ?',).run(shareId, userId);
+  return Number(info.changes) > 0;
+}
+

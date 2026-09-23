@@ -127,6 +127,14 @@ export default function Home() {
         fetch(`/api/history?limit=1&t=${Date.now()}`, { cache: 'no-store' }),
       ]);
 
+      // Sesi tidak valid (kedaluwarsa / sudah dihapus): paksa keluar agar UI tidak menampilkan sesi mati
+      if (configRes.status === 401 || historyRes.status === 401) {
+        setCurrentUser(null);
+        setConfig(null);
+        setHistoryCount(0);
+        return;
+      }
+
       if (configRes.ok) {
         const configData = await configRes.json().catch(() => null);
         if (configData) setConfig(configData);
@@ -149,6 +157,21 @@ export default function Home() {
     }
   }, [refreshTrigger, currentUser, fetchConfigAndHistoryCount]);
 
+  // Sinkronisasi live saat window kembali aktif (menangkap perubahan dari device/tab lain atau sesi mati)
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (document.visibilityState !== 'visible') return;
+      // checkAuthSession meng-update currentUser, yang otomatis memicu fetchConfigAndHistoryCount
+      await checkAuthSession();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [checkAuthSession]);
+
   const handleLogout = async () => {
     const confirmed = await showConfirm({
       title: 'Keluar dari Akun?',
@@ -170,6 +193,16 @@ export default function Home() {
     setIsSettingsOpen(false);
     showToast('Berhasil keluar dari akun', 'success');
   };
+
+  const handleForceLogout = useCallback(() => {
+    // Dipakai saat sesi diinvalidasi server (mis. ganti password) tanpa dialog konfirmasi
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setCurrentUser(null);
+    setConfig(null);
+    setHistoryCount(0);
+    setIsSettingsOpen(false);
+    showToast('Sesi berakhir. Silakan login kembali.', 'info');
+  }, []);
 
   const handleOpenSettings = (tab: 'image' | 'enhancer' | 'profile' | 'storage' = 'image') => {
     setSettingsTab(tab);
@@ -363,6 +396,7 @@ export default function Home() {
         currentUser={currentUser}
         onUserProfileUpdated={(updatedUser) => setCurrentUser(updatedUser)}
         onLogout={handleLogout}
+        onForceLogout={handleForceLogout}
         initialTab={settingsTab}
       />
 

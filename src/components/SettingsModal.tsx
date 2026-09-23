@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Settings,
@@ -26,6 +26,9 @@ import {
   Trash2,
   Clock,
   ShieldCheck,
+  Share2,
+  Send,
+  Inbox,
 } from 'lucide-react';
 import { showToast, showError, showConfirm, showSuccess } from '@/lib/swal';
 import { AVAILABLE_MODELS, AvailableModel, DEFAULT_MODEL, isValidModel, DEFAULT_ENHANCER_PROMPT } from '@/lib/models';
@@ -59,23 +62,12 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveSuccess: (updatedConfig?: AppConfigData) => void;
-  currentConfig?: {
-    baseUrl: string;
-    rawToken?: string;
-    defaultGenerationsModel: string;
-    defaultEditsModel: string;
-    enhancerBaseUrl?: string;
-    enhancerToken?: string;
-    enhancerModel?: string;
-    enhancerPrompt?: string;
-    retentionDays?: number;
-    retentionMaxItems?: number;
-    updatedAt?: string;
-  } | null;
+  currentConfig?: AppConfigData | null;
   currentUser?: UserProfileData | null;
   onUserProfileUpdated?: (user: UserProfileData) => void;
   onLogout?: () => void;
-  initialTab?: 'image' | 'enhancer' | 'profile' | 'storage';
+  onForceLogout?: () => void;
+   initialTab?: 'image' | 'enhancer' | 'profile' | 'storage' | 'share';
 }
 
 export default function SettingsModal({
@@ -86,9 +78,13 @@ export default function SettingsModal({
   currentUser,
   onUserProfileUpdated,
   onLogout,
+  onForceLogout,
   initialTab = 'image',
 }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'image' | 'enhancer' | 'profile' | 'storage'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'image' | 'enhancer' | 'profile' | 'storage' | 'share'>(initialTab);
+  const [shareTarget, setShareTarget] = useState('');
+  const [pendingShares, setPendingShares] = useState<Array<{ id: number; from_username: string; created_at: string }>>([]);
+  const [loadingShares, setLoadingShares] = useState(false);
 
   // Image Studio Settings State
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
@@ -151,6 +147,77 @@ export default function SettingsModal({
     } finally {
       setLoadingStorage(false);
     }
+   };
+
+  const fetchPendingShares = useCallback(async () => {
+    try {
+      setLoadingShares(true);
+      const res = await fetch('/api/config/share', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.pendingRequests)) {
+        setPendingShares(data.pendingRequests);
+      } else {
+        setPendingShares([]);
+      }
+    } catch (err: unknown) {
+      console.error('Failed to fetch pending shares:', err);
+      setPendingShares([]);
+    } finally {
+      setLoadingShares(false);
+    }
+  }, []);
+
+  const handleSendShare = async () => {
+    if (!shareTarget.trim()) {
+      showToast('Masukkan username tujuan.', 'warning');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(shareTarget.trim())) {
+      showToast('Username tidak valid.', 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/config/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toUsername: shareTarget.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'Permintaan berhasil dikirim.', 'success');
+        setShareTarget('');
+      } else {
+        showToast(data.error || 'Gagal mengirim permintaan.', 'error');
+      }
+    } catch {
+      showToast('Koneksi ke server gagal.', 'error');
+    }
+  };
+
+  const handleRespondShare = async (id: number, action: 'accept' | 'reject') => {
+    try {
+      const res = await fetch('/api/config/share', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || `Permintaan ${action === 'accept' ? 'diterima' : 'ditolak'}.`, 'success');
+        setPendingShares((prev) => prev.filter((r) => r.id !== id));
+
+        // Setelah konfigurasi diterima, muat ulang config agar form & badge langsung ter-update
+        if (action === 'accept') {
+          const cfgRes = await fetch('/api/config', { cache: 'no-store' });
+          const fresh = await cfgRes.json().catch(() => null);
+          if (fresh) onSaveSuccess(fresh);
+        }
+      } else {
+        showToast(data.error || 'Gagal memproses permintaan.', 'error');
+      }
+    } catch {
+      showToast('Koneksi ke server gagal.', 'error');
+    }
   };
 
   useEffect(() => {
@@ -197,7 +264,7 @@ export default function SettingsModal({
                   : DEFAULT_MODEL
               );
               setEnhancerBaseUrl(data.enhancerBaseUrl || 'https://api.openai.com/v1');
-              setEnhancerToken(data.enhancerToken || '');
+               setEnhancerToken(data.maskedEnhancerToken || '');
               setEnhancerModel(data.enhancerModel || 'gpt-4o-mini');
               setEnhancerPrompt(
                 data.enhancerPrompt !== undefined && data.enhancerPrompt !== null
@@ -210,9 +277,17 @@ export default function SettingsModal({
           })
           .catch(console.error);
       }
-      fetchStorageStats();
-    }
-  }, [isOpen, currentConfig]);
+       fetchStorageStats();
+     }
+   }, [isOpen, currentConfig]);
+
+  // Muat + polling daftar permintaan share saat tab I/E Konfigurasi dibuka (live)
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'share') return;
+    fetchPendingShares();
+    const timer = setInterval(() => fetchPendingShares(), 15000);
+    return () => clearInterval(timer);
+  }, [isOpen, activeTab, fetchPendingShares]);
 
   useEffect(() => {
     if (isOpen && initialTab) {
@@ -303,6 +378,8 @@ export default function SettingsModal({
       if (data.user && onUserProfileUpdated) {
         onUserProfileUpdated(data.user);
       }
+      // Server menghapus seluruh sesi saat password berubah; paksa logout agar UI tidak memegang sesi mati
+      onForceLogout?.();
     } catch (err: unknown) {
       showError('Gagal Mengubah Password', err instanceof Error ? err.message : 'Terjadi kesalahan');
     } finally {
@@ -391,21 +468,24 @@ export default function SettingsModal({
     setSaving(true);
 
     try {
+      // Token hanya dikirim bila diisi, agar menyimpan field lain tidak menghapus token tersimpan
+      const payload: Record<string, unknown> = {
+        baseUrl: baseUrl.trim(),
+        generationsModel: generationsModel.trim(),
+        editsModel: editsModel.trim(),
+        enhancerBaseUrl: enhancerBaseUrl.trim(),
+        enhancerModel: enhancerModel.trim(),
+        enhancerPrompt: enhancerPrompt.trim(),
+        retentionDays,
+        retentionMaxItems,
+      };
+      if (token.trim()) payload.token = token.trim();
+      if (enhancerToken.trim()) payload.enhancerToken = enhancerToken.trim();
+
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: baseUrl.trim(),
-          token: token.trim(),
-          generationsModel: generationsModel.trim(),
-          editsModel: editsModel.trim(),
-          enhancerBaseUrl: enhancerBaseUrl.trim(),
-          enhancerToken: enhancerToken.trim(),
-          enhancerModel: enhancerModel.trim(),
-          enhancerPrompt: enhancerPrompt.trim(),
-          retentionDays,
-          retentionMaxItems,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -478,8 +558,8 @@ export default function SettingsModal({
       const importedBaseUrl = typeof (settingsData.base_url ?? settingsData.baseUrl) === 'string'
         ? String(settingsData.base_url ?? settingsData.baseUrl).trim()
         : baseUrl;
-      const importedToken = typeof (settingsData.maskedToken ?? settingsData.maskedToken) === 'string'
-        ? String(settingsData.maskedToken ?? settingsData.maskedToken).trim()
+      const importedToken = typeof (settingsData.api_token ?? settingsData.token ?? settingsData.rawToken) === 'string'
+        ? String(settingsData.api_token ?? settingsData.token ?? settingsData.rawToken).trim()
         : token;
       const importedGenModel = typeof (settingsData.generations_model ?? settingsData.generationsModel) === 'string'
         ? String(settingsData.generations_model ?? settingsData.generationsModel).trim()
@@ -490,8 +570,8 @@ export default function SettingsModal({
       const importedEnhancerBaseUrl = typeof (settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl) === 'string'
         ? String(settingsData.enhancer_base_url ?? settingsData.enhancerBaseUrl).trim()
         : enhancerBaseUrl;
-      const importedEnhancerToken = typeof (settingsData.maskedEnhancerToken) === 'string'
-        ? String(settingsData.maskedEnhancerToken).trim()
+      const importedEnhancerToken = typeof (settingsData.enhancer_api_token ?? settingsData.enhancerToken) === 'string'
+        ? String(settingsData.enhancer_api_token ?? settingsData.enhancerToken).trim()
         : enhancerToken;
       const importedEnhancerModel = typeof (settingsData.enhancer_model ?? settingsData.enhancerModel) === 'string'
         ? String(settingsData.enhancer_model ?? settingsData.enhancerModel).trim()
@@ -646,6 +726,21 @@ export default function SettingsModal({
             <HardDrive className="w-4 h-4 text-emerald-600" />
             <span>Penyimpanan</span>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('share');
+              fetchPendingShares();
+            }}
+            className={`pb-2.5 px-3.5 text-xs sm:text-sm font-semibold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'share'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Share2 className="w-4 h-4 text-indigo-600" />
+            <span>I/E Konfigurasi</span>
+          </button>
         </div>
 
         {/* Form */}
@@ -693,7 +788,7 @@ export default function SettingsModal({
                     API Token / Bearer Key (Image Studio)
                   </label>
                   <span className="text-[11px] text-slate-500">
-                    {token ? (
+                    {token || currentConfig?.isConfigured ? (
                       <span className="text-emerald-700 font-medium flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Token Tersedia
                       </span>
@@ -833,7 +928,7 @@ export default function SettingsModal({
                     API Token Enhancer <span className="text-rose-600">*</span>
                   </label>
                   <span className="text-[11px] text-slate-500">
-                    {enhancerToken ? (
+                    {enhancerToken || currentConfig?.isEnhancerConfigured ? (
                       <span className="text-emerald-700 font-medium flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" /> Token Tersedia
                       </span>
@@ -1277,43 +1372,152 @@ export default function SettingsModal({
             </div>
           )}
 
+          {/* TAB 5: I/E Konfigurasi (Cross-user Settings Transfer) */}
+          {activeTab === 'share' && (
+            <div className="space-y-5">
+              {/* Card 1: Ekspor & Impor Berkas */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 shrink-0">
+                    <Download className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800">Ekspor &amp; Impor Berkas Pengaturan</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Unduh konfigurasi Anda (termasuk token) ke berkas JSON, atau muat kembali dari berkas untuk menimpa pengaturan akun ini.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleExportSettings}
+                    disabled={isExporting || isImporting || saving}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{isExporting ? 'Mengekspor...' : 'Ekspor Pengaturan'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isExporting || isImporting || saving}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{isImporting ? 'Mengimpor...' : 'Impor Pengaturan'}</span>
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleImportSettings}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Card 2: Kirim ke Pengguna Lain */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 shrink-0">
+                    <Send className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800">Kirim Konfigurasi ke Pengguna Lain</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Kirimkan konfigurasi Anda (termasuk token) ke pengguna lain. Penerima harus menerima (accept) sebelum konfigurasi otomatis diterapkan di akun mereka.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-1">
+                  <input
+                    type="text"
+                    value={shareTarget}
+                    onChange={(e) => setShareTarget(e.target.value)}
+                    placeholder="Username tujuan"
+                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendShare}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Kirim
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 3: Permintaan Masuk */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-100 shrink-0">
+                      <Inbox className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-800">
+                        Permintaan Masuk ({pendingShares.length})
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Setujui untuk menimpa konfigurasi akun ini.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchPendingShares}
+                    disabled={loadingShares}
+                    className="p-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 rounded-lg cursor-pointer transition-colors disabled:opacity-50 shrink-0"
+                    title="Muat ulang"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingShares ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                {loadingShares ? (
+                  <p className="text-xs text-slate-500 py-4 text-center">Memuat...</p>
+                ) : pendingShares.length === 0 ? (
+                  <div className="py-6 text-center border border-dashed border-slate-300 rounded-xl bg-slate-50">
+                    <p className="text-xs text-slate-500">Tidak ada permintaan masuk.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingShares.map((share) => (
+                      <div key={share.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <span className="text-xs font-medium text-slate-800">
+                            Konfigurasi dari <strong className="text-indigo-700">{share.from_username}</strong>
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono">{share.created_at}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRespondShare(share.id, 'accept')}
+                            className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-semibold cursor-pointer transition-colors"
+                          >
+                            Terima
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRespondShare(share.id, 'reject')}
+                            className="flex-1 px-3 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-[11px] font-semibold cursor-pointer transition-colors"
+                          >
+                            Tolak
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           </div>
 
           {/* Footer / Action Buttons (Pinned at Bottom) */}
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
-            {/* Left: Export & Import buttons (Seragam di semua tab) */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleExportSettings}
-                disabled={isExporting || isImporting || saving}
-                className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                title="Unduh seluruh konfigurasi pengaturan saat ini ke berkas JSON"
-              >
-                <Download className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{isExporting ? 'Mengekspor...' : 'Ekspor Pengaturan'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isExporting || isImporting || saving}
-                className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg sm:rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                title="Muat konfigurasi pengaturan dari berkas JSON"
-              >
-                <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{isImporting ? 'Mengimpor...' : 'Impor Pengaturan'}</span>
-              </button>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImportSettings}
-                className="hidden"
-              />
-            </div>
-
             {/* Right: Action Buttons */}
             {activeTab === 'profile' ? (
               <div className="flex items-center gap-2">

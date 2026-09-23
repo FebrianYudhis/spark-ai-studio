@@ -53,11 +53,11 @@ export async function GET(req: NextRequest) {
       exported_at: new Date().toISOString(),
       settings: {
         base_url: settings.base_url,
-        maskedToken,
+        api_token: settings.api_token,
         generations_model: settings.generations_model,
         edits_model: settings.edits_model,
         enhancer_base_url: settings.enhancer_base_url,
-        maskedEnhancerToken,
+        enhancer_api_token: settings.enhancer_api_token,
         enhancer_model: settings.enhancer_model,
         enhancer_prompt: settings.enhancer_prompt,
         retention_days: settings.retention_days ?? 0,
@@ -81,13 +81,14 @@ export async function GET(req: NextRequest) {
       // Image Studio Settings
       baseUrl: settings.base_url,
       isConfigured,
-       maskedToken,
-       defaultGenerationsModel: settings.generations_model,
+      maskedToken,
+      defaultGenerationsModel: settings.generations_model,
       defaultEditsModel: settings.edits_model,
 
       // Prompt Enhancer Settings
       enhancerBaseUrl: settings.enhancer_base_url,
       isEnhancerConfigured,
+      maskedEnhancerToken,
       enhancerModel: settings.enhancer_model,
       enhancerPrompt: settings.enhancer_prompt,
 
